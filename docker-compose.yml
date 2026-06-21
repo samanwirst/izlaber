@@ -1,0 +1,58 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    env_file:
+      - .env
+    environment:
+      SERVER_API_BASE_URL: http://server:8000/api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./server:/app/server
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+
+  bot:
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
+    env_file:
+      - .env
+    environment:
+      SERVER_API_BASE_URL: http://server:8000/api
+    depends_on:
+      - server
+
+  parser:
+    build:
+      context: .
+      dockerfile: Dockerfile.parser
+    env_file:
+      - .env
+    environment:
+      SERVER_API_BASE_URL: http://server:8000/api
+    volumes:
+      - ./.parser_state:/app/.parser_state
+    profiles:
+      - parser
+    depends_on:
+      - server
+
+  postgres:
+    image: postgres:16
+    profiles:
+      - postgres
+    environment:
+      POSTGRES_USER: izlaber
+      POSTGRES_PASSWORD: izlaber
+      POSTGRES_DB: izlaber
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

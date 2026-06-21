@@ -10,6 +10,7 @@ router = Router(name="start")
 @router.message(CommandStart())
 async def command_start(message: Message) -> None:
     await message.answer(
-        "Напишите название товара, и я найду 3 карточки на Uzum.",
+        "Напишите название товара, и я найду 5 карточек на Uzum. "
+        "Нажмите «Еще», чтобы получить следующие 5 по этому же запросу.",
         reply_markup=main_menu_keyboard(),
     )
