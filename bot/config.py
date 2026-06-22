@@ -18,6 +18,22 @@ class Config:
     bot_api_key: str = ""
     product_search_limit: int = 5
     server_api_timeout: float = 10.0
+    openai_api_key: str = ""
+    openai_model: str = "gpt-5.4-nano"
+    openai_rerank_enabled: bool = True
+    openai_candidate_limit: int = 30
+    openai_timeout: float = 8.0
+    openai_max_output_tokens: int = 900
+    openai_search_expand_enabled: bool = True
+    openai_search_expand_max_queries: int = 3
+    openai_search_expand_query_limit: int = 15
+    openai_rerank_max_products: int = 80
+    openai_status_notify_user_id: int | None = 976835256
+    openai_admin_api_key: str = ""
+    openai_monthly_budget_usd: float | None = None
+    openai_balance_probe_interval: float = 60.0
+    openai_startup_probe_enabled: bool = True
+    guest_search_enabled: bool = True
 
 
 def load_config() -> Config:
@@ -38,4 +54,48 @@ def load_config() -> Config:
         bot_api_key=getenv("BOT_API_KEY", ""),
         product_search_limit=int(getenv("BOT_PRODUCT_SEARCH_LIMIT", "5")),
         server_api_timeout=float(getenv("BOT_SERVER_API_TIMEOUT", "10")),
+        openai_api_key=getenv("OPENAI_API_KEY", ""),
+        openai_model=getenv("OPENAI_RERANK_MODEL", "gpt-5.4-nano"),
+        openai_rerank_enabled=getenv("OPENAI_RERANK_ENABLED", "true").lower()
+        in {"1", "true", "yes"},
+        openai_candidate_limit=int(getenv("OPENAI_RERANK_CANDIDATE_LIMIT", "30")),
+        openai_timeout=float(getenv("OPENAI_RERANK_TIMEOUT", "8")),
+        openai_max_output_tokens=int(getenv("OPENAI_RERANK_MAX_OUTPUT_TOKENS", "900")),
+        openai_search_expand_enabled=getenv("OPENAI_SEARCH_EXPAND_ENABLED", "true").lower()
+        in {"1", "true", "yes"},
+        openai_search_expand_max_queries=int(getenv("OPENAI_SEARCH_EXPAND_MAX_QUERIES", "3")),
+        openai_search_expand_query_limit=int(getenv("OPENAI_SEARCH_EXPAND_QUERY_LIMIT", "15")),
+        openai_rerank_max_products=int(getenv("OPENAI_RERANK_MAX_PRODUCTS", "80")),
+        openai_status_notify_user_id=_optional_int(
+            getenv("OPENAI_STATUS_NOTIFY_USER_ID"),
+            default=976835256,
+        ),
+        openai_admin_api_key=getenv("OPENAI_ADMIN_API_KEY", ""),
+        openai_monthly_budget_usd=_optional_float(
+            getenv("OPENAI_MONTHLY_BUDGET_USD"),
+            default=None,
+        ),
+        openai_balance_probe_interval=float(getenv("OPENAI_BALANCE_PROBE_INTERVAL", "60")),
+        openai_startup_probe_enabled=getenv("OPENAI_STARTUP_PROBE_ENABLED", "true").lower()
+        in {"1", "true", "yes"},
+        guest_search_enabled=getenv("BOT_GUEST_SEARCH_ENABLED", "true").lower()
+        in {"1", "true", "yes"},
     )
+
+
+def _optional_int(value: str | None, *, default: int | None) -> int | None:
+    if value is None:
+        return default
+    value = value.strip()
+    if not value:
+        return None
+    return int(value)
+
+
+def _optional_float(value: str | None, *, default: float | None) -> float | None:
+    if value is None:
+        return default
+    value = value.strip()
+    if not value:
+        return None
+    return float(value)

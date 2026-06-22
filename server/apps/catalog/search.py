@@ -8,6 +8,12 @@ from django.db.models import Count, Max, Sum
 from apps.catalog.models import ProductSearchTerm
 
 TOKEN_RE = re.compile(r"[0-9a-zа-яё]+", re.IGNORECASE)
+V_NECK_RE = re.compile(
+    r"(?<![0-9a-zа-яё])v\s*[-–—]?\s*(?:образн\w*|вырез\w*)"
+    r"|(?<![0-9a-zа-яё])v[-\s]?neck(?![0-9a-zа-яё])"
+    r"|треугольн\w*\s+вырез\w*",
+    re.IGNORECASE,
+)
 MAX_QUERY_TOKENS = 6
 MAX_TOKEN_LENGTH = 64
 TITLE_WEIGHT = 10
@@ -17,6 +23,40 @@ SOURCE_ID_WEIGHT = 1
 QUERY_SYNONYMS = {
     "айфон": {"айфон", "iphone"},
     "iphone": {"iphone", "айфон"},
+}
+SWEATER_TOKENS = {
+    "джемпер",
+    "джемпера",
+    "джемперы",
+    "пуловер",
+    "пуловеры",
+    "свитер",
+    "свитера",
+    "свитеры",
+}
+NECKLINE_TOKENS = {
+    "горловина",
+    "горловиной",
+    "вырез",
+    "выреза",
+    "вырезом",
+    "вырезы",
+    "вырезами",
+}
+V_NECK_HINT_TOKENS = {
+    "v",
+    "vneck",
+    "образная",
+    "образного",
+    "образной",
+    "образным",
+    "образными",
+    "образный",
+    "треугольная",
+    "треугольного",
+    "треугольной",
+    "треугольным",
+    "треугольный",
 }
 
 
@@ -32,6 +72,9 @@ def product_search_terms(
     _merge_terms(terms, tokenize(brand), BRAND_WEIGHT)
     _merge_terms(terms, tokenize(category_path_text), CATEGORY_WEIGHT)
     _merge_terms(terms, tokenize(source_product_id), SOURCE_ID_WEIGHT)
+    _merge_terms(terms, semantic_terms(title), TITLE_WEIGHT)
+    _merge_terms(terms, semantic_terms(brand), BRAND_WEIGHT)
+    _merge_terms(terms, semantic_terms(category_path_text), CATEGORY_WEIGHT)
     return terms
 
 
@@ -129,9 +172,21 @@ def search_product_ids(
 
 
 def query_terms(query: str) -> list[str]:
+    tokens = tokenize(query)
+    semantic = query_semantic_terms(query, tokens)
+    skip_tokens = _query_skip_tokens(semantic)
+
     expanded: list[str] = []
     seen: set[str] = set()
-    for token in tokenize(query):
+    for term in semantic:
+        seen.add(term)
+        expanded.append(term)
+        if len(expanded) >= MAX_QUERY_TOKENS:
+            return expanded
+
+    for token in tokens:
+        if token in skip_tokens:
+            continue
         for synonym in QUERY_SYNONYMS.get(token, {token}):
             if synonym in seen:
                 continue
@@ -140,6 +195,34 @@ def query_terms(query: str) -> list[str]:
             if len(expanded) >= MAX_QUERY_TOKENS:
                 return expanded
     return expanded
+
+
+def semantic_terms(value: str | None) -> list[str]:
+    if not value:
+        return []
+
+    terms: list[str] = []
+    tokens = set(tokenize(value))
+    if tokens & SWEATER_TOKENS:
+        terms.append("sweater")
+    if tokens & NECKLINE_TOKENS:
+        terms.append("neckline")
+    if V_NECK_RE.search(value):
+        terms.append("vneck")
+    return terms
+
+
+def query_semantic_terms(query: str, tokens: list[str] | None = None) -> list[str]:
+    tokens = tokens or tokenize(query)
+    token_set = set(tokens)
+    terms: list[str] = []
+    if token_set & SWEATER_TOKENS:
+        terms.append("sweater")
+    if _query_has_v_neck(query, token_set):
+        terms.append("vneck")
+    elif token_set & NECKLINE_TOKENS:
+        terms.append("neckline")
+    return terms
 
 
 def tokenize(value: str | None) -> list[str]:
@@ -157,6 +240,24 @@ def tokenize(value: str | None) -> list[str]:
 def _merge_terms(target: dict[str, int], terms: Iterable[str], weight: int) -> None:
     for term in terms:
         target[term] = max(weight, target.get(term, 0))
+
+
+def _query_has_v_neck(query: str, tokens: set[str]) -> bool:
+    if V_NECK_RE.search(query):
+        return True
+    return bool(tokens & {"v", "vneck"} and tokens & NECKLINE_TOKENS)
+
+
+def _query_skip_tokens(semantic: list[str]) -> set[str]:
+    skip_tokens: set[str] = set()
+    if "sweater" in semantic:
+        skip_tokens.update(SWEATER_TOKENS)
+    if "vneck" in semantic:
+        skip_tokens.update(NECKLINE_TOKENS)
+        skip_tokens.update(V_NECK_HINT_TOKENS)
+    elif "neckline" in semantic:
+        skip_tokens.update(NECKLINE_TOKENS)
+    return skip_tokens
 
 
 def _split_alpha_numeric(token: str) -> list[str]:

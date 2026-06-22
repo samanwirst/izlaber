@@ -16,6 +16,7 @@ class ProductDTO:
     title: str
     canonical_url: str
     cover_image_url: str | None
+    brand: str | None
     current_price: str | None
     old_price: str | None
     currency: str
@@ -93,7 +94,7 @@ def render_products(products: list[ProductDTO], query: str) -> str:
         if product.current_price:
             details.append(_format_price(product.current_price, product.currency))
         if product.rating:
-            details.append(f"rating {product.rating}")
+            details.append(f"рейтинг {product.rating}")
         if product.reviews_count is not None:
             details.append(f"{product.reviews_count} отзывов")
         suffix = f" - {escape(', '.join(details))}" if details else ""
@@ -131,6 +132,7 @@ def _parse_product(row: dict[str, Any]) -> ProductDTO:
         title=row["title"],
         canonical_url=row["canonical_url"],
         cover_image_url=row.get("cover_image_url"),
+        brand=row.get("brand"),
         current_price=row.get("current_price"),
         old_price=row.get("old_price"),
         currency=row.get("currency") or "UZS",

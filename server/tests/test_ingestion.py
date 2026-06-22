@@ -1,5 +1,5 @@
 from apps.catalog.models import Product, ProductSearchTerm, ProductSnapshot
-from apps.catalog.search import search_product_ids
+from apps.catalog.search import product_search_terms, query_terms, search_product_ids
 from apps.crawling.models import CrawlRun
 from apps.crawling.services import (
     finish_crawl_run,
@@ -53,6 +53,32 @@ def test_product_upsert_updates_search_index(db):
         active_only=True,
         limit=5,
     ) == [product.id]
+
+
+def test_search_normalizes_v_neck_sweater_query():
+    assert query_terms("свитер v вырез") == ["sweater", "vneck"]
+    assert query_terms("кофта v вырез") == ["vneck", "кофта"]
+    assert query_terms("кардиган v вырез") == ["vneck", "кардиган"]
+
+    terms = product_search_terms(
+        title="Женский серый свитер с V образным вырезом, базовый теплый трикотаж",
+        brand=None,
+        category_path_text="Джемперы, свитеры и кардиганы",
+        source_product_id="p1",
+    )
+
+    assert terms["sweater"] == 10
+    assert terms["neckline"] == 10
+    assert terms["vneck"] == 10
+
+    t_shirt_terms = product_search_terms(
+        title="Женская кофта с V образным вырезом",
+        brand=None,
+        category_path_text="Футболки и поло",
+        source_product_id="p2",
+    )
+    assert "sweater" not in t_shirt_terms
+    assert t_shirt_terms["vneck"] == 10
 
 
 def test_product_upsert_uses_explicit_cover_image_url(db):

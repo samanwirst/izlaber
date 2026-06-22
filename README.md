@@ -34,7 +34,15 @@ SQLite is used by default. For PostgreSQL set `DATABASE_URL`.
 ## Run Bot
 
 ```bash
+source .venv/bin/activate
 python -m bot
+```
+
+Direct script launch is also supported:
+
+```bash
+python bot/main.py
+cd bot && ../.venv/bin/python main.py
 ```
 
 Bot search flow:
@@ -44,11 +52,27 @@ Bot search flow:
 - The `Еще` keyboard button sends the next 5 cards for the latest query of that exact chat/user.
 - Any new product text resets that user's search offset, so old searches are not mixed.
 
+Guest Mode:
+
+- If Telegram Guest Mode is enabled for the bot in BotFather, users can mention the bot from chats where it is not a member.
+- Guest requests return one compact top-5 Uzum result via `answerGuestQuery`; they do not reuse or mutate the private-chat `Еще` pagination state.
+- Set `BOT_GUEST_SEARCH_ENABLED=false` to disable this handler locally.
+
 Product search uses a token index. Rebuild it after large manual DB imports:
 
 ```bash
 ./scripts/rebuild_product_search_index.sh --marketplace uzum
 ```
+
+Optional AI rerank:
+
+- Set `OPENAI_API_KEY` in `.env` to enable neural reranking.
+- The bot first fetches `OPENAI_RERANK_CANDIDATE_LIMIT` indexed candidates, then asks the configured OpenAI model to reorder only those candidates.
+- If the indexed candidates look irrelevant or too sparse, the model can generate up to `OPENAI_SEARCH_EXPAND_MAX_QUERIES` extra search queries with optional price filters, then the bot fetches more candidates and reranks the merged pool.
+- If OpenAI returns quota/billing exhaustion, the bot notifies `OPENAI_STATUS_NOTIFY_USER_ID`, switches to local-only search, probes OpenAI every `OPENAI_BALANCE_PROBE_INTERVAL` seconds, and enables AI automatically when the API is available again.
+- `/balance` is available only to `OPENAI_STATUS_NOTIFY_USER_ID`. It shows live AI availability; with `OPENAI_ADMIN_API_KEY` it also shows official Costs API spend, and with `OPENAI_MONTHLY_BUDGET_USD` it estimates remaining configured budget.
+- Default model is `gpt-5.4-nano` for low cost.
+- If OpenAI is unavailable or the key is missing, the bot falls back to indexed search order.
 
 ## Run Parser
 
@@ -107,21 +131,43 @@ python -m parsers.uzum_market.cli crawl --mode test --limit 10 --dry-run
 
 ## Docker
 
+Fast local launch for the API and bot:
+
 ```bash
-docker compose up --build
+./scripts/docker-start.sh
+```
+
+Equivalent raw Docker command:
+
+```bash
+docker compose up --build server bot
+```
+
+The server uses the existing `./server/db.sqlite3` through a bind mount, so the
+current parsed catalog is available inside Docker. The SQLite database, parser
+state, virtualenvs, and caches are excluded from Docker build context by
+`.dockerignore`, so image builds do not upload local data.
+
+Useful Docker commands:
+
+```bash
+docker compose logs -f bot
+docker compose logs -f server
+docker compose down
+docker compose run --rm server python manage.py rebuild_product_search_index --marketplace uzum
 ```
 
 Parser:
 
 ```bash
 docker compose --profile parser run --rm parser python -m parsers.uzum_market.cli crawl --mode test --limit 100
-docker compose --profile parser run --rm parser python -m parsers.uzum_market.cli crawl --mode full
+docker compose --profile parser run --rm parser python -m parsers.uzum_market.cli crawl --mode full --resume
 ```
 
 PostgreSQL profile:
 
 ```bash
-docker compose --profile postgres up --build
+DATABASE_URL=postgres://izlaber:izlaber@postgres:5432/izlaber docker compose --profile postgres up --build
 ```
 
 ## Tests
