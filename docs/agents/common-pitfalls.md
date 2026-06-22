@@ -14,6 +14,7 @@
 | Changing search fields without rebuild plan | Old rows may stay stale. | Run or document search/visual index rebuild. |
 | Returning full products from list API | Slows bot search. | Keep list payload compact. |
 | Unbounded AI candidate/image/audio flow | Cost and latency spikes. | Keep limits/timeouts and fallback paths. |
+| Enabling analytics cookies without consent/policy | Creates legal and trust risk. | Keep cookies off by default until privacy text and consent are ready. |
 
 ## Files To Avoid Touching Casually
 
@@ -36,10 +37,10 @@
 - `More` text/button aliases should stay short and exact to avoid treating normal user requests as pagination.
 - Search state is in memory and intentionally resets on process restart.
 - User language is persistent through the server API, not local files.
+- Product click analytics require `BOT_PUBLIC_BASE_URL`; without it the bot keeps direct product links.
 
 ## Server-Specific Notes
 
 - `ProductSearchTerm` is mainly for SQLite fallback; PostgreSQL search uses `Product.search_text`.
 - `cover_image_url` should be the product card cover, not an arbitrary gallery image.
 - `canonical_url` is required for cards and should point to the product page.
-

@@ -1,4 +1,9 @@
+import hashlib
+import uuid
+
+from django.conf import settings
 from django.db.models import Case, IntegerField, Q, When
+from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -7,9 +12,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.api_auth.authentication import BotAPIKeyAuthentication
-from apps.catalog.models import Category, Marketplace, Product, UserPreference
+from apps.catalog.models import AnalyticsEvent, Category, Marketplace, Product, UserPreference
 from apps.catalog.search import query_price_filters, search_product_ids
 from apps.catalog.serializers import (
+    AnalyticsEventSerializer,
     CategorySerializer,
     MarketplaceSerializer,
     ProductCardSerializer,
@@ -237,6 +243,81 @@ class UserPreferenceDetailView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+class AnalyticsEventCreateView(APIView):
+    authentication_classes = (BotAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request):
+        event_id = request.data.get("event_id")
+        if event_id:
+            existing = AnalyticsEvent.objects.filter(event_id=event_id).first()
+            if existing is not None:
+                return Response(AnalyticsEventSerializer(existing).data, status=status.HTTP_200_OK)
+
+        serializer = AnalyticsEventSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        event = serializer.save(source=serializer.validated_data.get("source") or "bot")
+        return Response(AnalyticsEventSerializer(event).data, status=status.HTTP_201_CREATED)
+
+
+class ProductClickRedirectView(APIView):
+    authentication_classes = ()
+    permission_classes = ()
+
+    def get(self, request, product_id: int):
+        product = get_object_or_404(
+            Product.objects.only("id", "source_product_id", "canonical_url"),
+            pk=product_id,
+        )
+        context_event = _context_analytics_event(request.GET.get("ctx"))
+        visitor_id = _request_visitor_id(request)
+        metadata = {
+            "context_event_id": str(context_event.event_id) if context_event else "",
+            "target_url": product.canonical_url,
+        }
+        if raw_context := request.GET.get("ctx"):
+            metadata["raw_context_event_id"] = raw_context
+
+        AnalyticsEvent.objects.create(
+            event_type="select_item",
+            source=AnalyticsEvent.Source.REDIRECT,
+            telegram_user_id=context_event.telegram_user_id if context_event else None,
+            chat_id=context_event.chat_id if context_event else None,
+            message_id=context_event.message_id if context_event else None,
+            visitor_id=visitor_id,
+            language_code=context_event.language_code if context_event else "",
+            input_type="click",
+            query=context_event.query if context_event else "",
+            product=product,
+            source_product_id=product.source_product_id,
+            product_position=context_event.product_position if context_event else None,
+            result_count=context_event.result_count if context_event else None,
+            request_path=request.get_full_path(),
+            referrer=request.META.get("HTTP_REFERER", ""),
+            user_agent=request.META.get("HTTP_USER_AGENT", ""),
+            ip_hash=_request_ip_hash(request),
+            metadata=metadata,
+        )
+
+        response = HttpResponseRedirect(product.canonical_url)
+        response["Referrer-Policy"] = "no-referrer"
+        response["X-Robots-Tag"] = "noindex, nofollow"
+        should_set_cookie = (
+            settings.ANALYTICS_COOKIE_ENABLED
+            and settings.ANALYTICS_COOKIE_NAME not in request.COOKIES
+        )
+        if should_set_cookie:
+            response.set_cookie(
+                settings.ANALYTICS_COOKIE_NAME,
+                visitor_id,
+                max_age=settings.ANALYTICS_COOKIE_MAX_AGE_SECONDS,
+                httponly=True,
+                secure=not settings.DEBUG,
+                samesite="Lax",
+            )
+        return response
+
+
 def _pagination_window(params) -> tuple[int, int]:
     limit = _positive_int(params.get("limit"), default=20)
     offset = _positive_int(params.get("offset"), default=0)
@@ -262,6 +343,36 @@ def _positive_float(value, *, default: float) -> float:
 def _normalize_language_code(language_code: str) -> str:
     base_code = language_code.casefold().replace("_", "-").split("-", maxsplit=1)[0]
     return base_code if base_code in {"uz", "ru", "en"} else "uz"
+
+
+def _context_analytics_event(value: str | None) -> AnalyticsEvent | None:
+    if not value:
+        return None
+    try:
+        event_id = uuid.UUID(str(value))
+    except ValueError:
+        return None
+    return AnalyticsEvent.objects.filter(event_id=event_id).first()
+
+
+def _request_visitor_id(request) -> str:
+    if not settings.ANALYTICS_COOKIE_ENABLED:
+        return ""
+    visitor_id = request.COOKIES.get(settings.ANALYTICS_COOKIE_NAME, "").strip()
+    if visitor_id:
+        return visitor_id[:64]
+    return uuid.uuid4().hex
+
+
+def _request_ip_hash(request) -> str:
+    if not settings.ANALYTICS_HASH_IP:
+        return ""
+    raw_ip = (request.META.get("HTTP_X_FORWARDED_FOR", "").split(",", maxsplit=1)[0].strip())
+    raw_ip = raw_ip or request.META.get("REMOTE_ADDR", "")
+    if not raw_ip:
+        return ""
+    value = f"{settings.ANALYTICS_IP_HASH_SALT}:{raw_ip}".encode()
+    return hashlib.sha256(value).hexdigest()
 
 
 def _int_list(value) -> list[int]:

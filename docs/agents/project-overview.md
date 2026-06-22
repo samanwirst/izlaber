@@ -32,6 +32,7 @@ Users can search by text, photo, or voice. The bot returns product cards with co
 | --- | --- | --- |
 | Products and crawl runs | PostgreSQL or local SQLite | Database-backed. |
 | User language preferences | `catalog_userpreference` | Database-backed. |
+| Analytics events | `catalog_analyticsevent` | Database-backed bot/search/click events. |
 | Bot pagination state | `bot/services/search_state.py` memory | Lost on bot restart. |
 | Parser checkpoint/browser profile | `.parser_state/uzum_market/` | Local ignored runtime data. |
 | Cover visual fingerprints | `Product.cover_image_ahash/dhash` | Database-backed; refresh with visual index script. |
@@ -41,4 +42,3 @@ Users can search by text, photo, or voice. The bot returns product cards with co
 - There is no CI workflow in `.github/` at the time of inspection.
 - No dedicated typecheck command is configured.
 - No documented repo-wide formatter command exists beyond Ruff availability.
-

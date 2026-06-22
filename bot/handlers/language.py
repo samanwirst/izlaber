@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery, Message
 from bot.config import Config
 from bot.keyboards.language import language_selection_keyboard
 from bot.locales import format_message, language_from_message, normalize_language_code
+from bot.services.analytics import track_callback_event, track_message_event
 from bot.services.api_client import ServerAPIClient, ServerAPIError
 from bot.services.language_store import language_preferences
 
@@ -14,8 +15,15 @@ router = Router(name="language")
 
 
 @router.message(Command("lang"))
-async def command_lang(message: Message) -> None:
+async def command_lang(message: Message, config: Config) -> None:
     language = language_from_message(message)
+    await track_message_event(
+        config=config,
+        message=message,
+        event_type="language_prompt",
+        language_code=language,
+        input_type="command",
+    )
     await message.answer(
         format_message("language_prompt", language),
         reply_markup=language_selection_keyboard(),
@@ -42,6 +50,13 @@ async def choose_language(callback: CallbackQuery, config: Config) -> None:
     except ServerAPIError:
         language_preferences.set_cached(user.id, language_code)
 
+    await track_callback_event(
+        config=config,
+        callback=callback,
+        event_type="language_select",
+        language_code=language_code,
+        metadata={"selected_language": language_code},
+    )
     if callback.message is not None:
         await callback.message.edit_text(
             format_message(

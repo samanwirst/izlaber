@@ -21,6 +21,7 @@
 | `ProductSnapshot` | Historical snapshots for changed products. |
 | `ProductSearchTerm` | SQLite fallback token search index. |
 | `UserPreference` | Persistent Telegram user language preferences. |
+| `AnalyticsEvent` | Persistent bot, search, impression, and click analytics events. |
 | `CrawlRun` | Parser run lifecycle and counts. |
 | `CrawlEvent` | Parser events. |
 | `CrawlRunSeenProduct` | Products seen in a full crawl for deactivation logic. |
@@ -62,10 +63,10 @@ Audit:
 - Only successful unlimited full runs should deactivate unseen products.
 - If changing `content_hash` inputs, expect broad product updates on the next crawl; call this out.
 - If changing cover image selection, reset/rebuild visual fingerprints as needed.
+- Do not enable analytics cookies or IP hashing without updating privacy/consent documentation.
 
 ## SQLite Vs PostgreSQL
 
 - PostgreSQL path uses `Product.search_text` and database search features.
 - SQLite fallback uses `ProductSearchTerm`.
 - Keep both paths tested when search logic changes.
-

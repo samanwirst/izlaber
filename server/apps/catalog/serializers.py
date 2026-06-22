@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.catalog.models import (
+    AnalyticsEvent,
     Category,
     Marketplace,
     Product,
@@ -115,3 +116,31 @@ class UserPreferenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserPreference
         fields = ("telegram_user_id", "language_code", "created_at", "updated_at")
+
+
+class AnalyticsEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AnalyticsEvent
+        fields = (
+            "event_id",
+            "event_type",
+            "source",
+            "telegram_user_id",
+            "chat_id",
+            "message_id",
+            "visitor_id",
+            "language_code",
+            "input_type",
+            "query",
+            "product",
+            "source_product_id",
+            "product_position",
+            "result_count",
+            "request_path",
+            "referrer",
+            "user_agent",
+            "ip_hash",
+            "metadata",
+            "created_at",
+        )
+        read_only_fields = ("created_at",)

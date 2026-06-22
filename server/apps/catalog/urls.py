@@ -2,8 +2,10 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from apps.catalog.views import (
+    AnalyticsEventCreateView,
     CategoryViewSet,
     MarketplaceViewSet,
+    ProductClickRedirectView,
     ProductViewSet,
     UserPreferenceDetailView,
     UserPreferenceListView,
@@ -15,10 +17,16 @@ router.register("categories", CategoryViewSet, basename="category")
 router.register("products", ProductViewSet, basename="product")
 
 urlpatterns = router.urls + [
+    path("analytics/events/", AnalyticsEventCreateView.as_view(), name="analytics-event-create"),
     path("user-preferences/languages/", UserPreferenceListView.as_view(), name="user-languages"),
     path(
         "user-preferences/languages/<str:telegram_user_id>/",
         UserPreferenceDetailView.as_view(),
         name="user-language-detail",
+    ),
+    path(
+        "redirect/products/<int:product_id>/",
+        ProductClickRedirectView.as_view(),
+        name="product-click-redirect",
     ),
 ]

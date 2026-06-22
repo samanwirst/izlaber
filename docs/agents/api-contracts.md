@@ -22,6 +22,8 @@ All internal consumers use `X-Internal-API-Key`.
 | `GET /api/v1/categories/` | Categories, optionally by marketplace. |
 | `GET /api/v1/user-preferences/languages/` | Load all stored Telegram language preferences. |
 | `GET/POST /api/v1/user-preferences/languages/{telegram_user_id}/` | Read/write one language preference. |
+| `POST /api/v1/analytics/events/` | Store bot-side analytics events. |
+| `GET /api/v1/redirect/products/{product_id}/` | Store product click analytics, optionally set analytics cookie, then redirect to product URL. |
 
 Bot client wrapper: `bot/services/api_client.py`.
 
@@ -45,4 +47,3 @@ Parser client/storage code: `parsers/uzum_market/storage.py`.
 - Add or update tests covering status code, auth, and response keys.
 - Update `server/README.md` and agent docs when a new endpoint is durable.
 - Keep response payloads bounded; avoid returning full raw product data from list endpoints.
-

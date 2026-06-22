@@ -15,9 +15,12 @@ class Config:
     bot: BotConfig
     log_level: str = "INFO"
     server_api_base_url: str = "http://127.0.0.1:8000/api"
+    public_base_url: str = ""
     bot_api_key: str = ""
     product_search_limit: int = 5
     server_api_timeout: float = 10.0
+    analytics_enabled: bool = True
+    analytics_timeout: float = 2.0
     openai_api_key: str = ""
     openai_model: str = "gpt-5.4-nano"
     openai_rerank_enabled: bool = True
@@ -71,9 +74,13 @@ def load_config() -> Config:
         bot=BotConfig(token=token, parse_mode=parse_mode),
         log_level=log_level,
         server_api_base_url=getenv("SERVER_API_BASE_URL", "http://127.0.0.1:8000/api").rstrip("/"),
+        public_base_url=getenv("BOT_PUBLIC_BASE_URL", "").rstrip("/"),
         bot_api_key=getenv("BOT_API_KEY", ""),
         product_search_limit=int(getenv("BOT_PRODUCT_SEARCH_LIMIT", "5")),
         server_api_timeout=float(getenv("BOT_SERVER_API_TIMEOUT", "10")),
+        analytics_enabled=getenv("BOT_ANALYTICS_ENABLED", "true").lower()
+        in {"1", "true", "yes"},
+        analytics_timeout=float(getenv("BOT_ANALYTICS_TIMEOUT", "2")),
         openai_api_key=getenv("OPENAI_API_KEY", ""),
         openai_model=getenv("OPENAI_RERANK_MODEL", "gpt-5.4-nano"),
         openai_rerank_enabled=getenv("OPENAI_RERANK_ENABLED", "true").lower()

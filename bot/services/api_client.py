@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from html import escape
 from typing import Any
+from uuid import UUID
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
@@ -25,6 +26,8 @@ class ProductDTO:
     rating: str | None
     reviews_count: int | None
     category_path_text: str | None
+    source_product_id: str | None = None
+    tracking_url: str | None = None
 
 
 class ServerAPIClient:
@@ -133,6 +136,12 @@ class ServerAPIClient:
             return str(data.get("language_code") or language_code)
         return language_code
 
+    async def create_analytics_event(self, payload: dict[str, Any]) -> UUID | None:
+        data = await self._post("/v1/analytics/events/", payload=payload)
+        if not isinstance(data, dict) or not data.get("event_id"):
+            return None
+        return UUID(str(data["event_id"]))
+
     async def _get(
         self,
         path: str,
@@ -192,16 +201,18 @@ def render_products(
         if product.reviews_count is not None:
             details.append(review_text(product.reviews_count, language_code))
         suffix = f" - {escape(', '.join(details))}" if details else ""
+        product_url = product.tracking_url or product.canonical_url
         lines.append(
-            f'{index}. <a href="{escape(product.canonical_url)}">'
+            f'{index}. <a href="{escape(product_url)}">'
             f"{escape(product.title)}</a>{suffix}"
         )
     return "\n\n".join(lines)
 
 
 def render_product_card(product: ProductDTO, index: int, language_code: str | None = None) -> str:
+    product_url = product.tracking_url or product.canonical_url
     lines = [
-        f'<b>{index}. <a href="{escape(product.canonical_url)}">{escape(product.title)}</a></b>'
+        f'<b>{index}. <a href="{escape(product_url)}">{escape(product.title)}</a></b>'
     ]
     if product.current_price:
         price = escape(_format_price(product.current_price, product.currency, language_code))
@@ -225,6 +236,7 @@ def render_product_card(product: ProductDTO, index: int, language_code: str | No
 def _parse_product(row: dict[str, Any]) -> ProductDTO:
     return ProductDTO(
         id=row["id"],
+        source_product_id=row.get("source_product_id"),
         title=row["title"],
         canonical_url=row["canonical_url"],
         cover_image_url=row.get("cover_image_url"),
@@ -236,6 +248,21 @@ def _parse_product(row: dict[str, Any]) -> ProductDTO:
         reviews_count=row.get("reviews_count"),
         category_path_text=row.get("category_path_text"),
     )
+
+
+def product_click_url(
+    *,
+    public_base_url: str,
+    product_id: int,
+    context_event_id: UUID | None = None,
+) -> str:
+    if not public_base_url:
+        return ""
+    base_url = public_base_url.rstrip("/")
+    url = f"{base_url}/api/v1/redirect/products/{product_id}/"
+    if context_event_id is not None:
+        return f"{url}?ctx={context_event_id}"
+    return url
 
 
 def _response_rows(data: dict[str, Any] | list[dict[str, Any]]) -> list[dict[str, Any]]:

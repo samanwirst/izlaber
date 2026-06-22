@@ -1,3 +1,6 @@
+from dataclasses import replace
+from uuid import UUID
+
 import pytest
 from aiogram.types import PhotoSize
 
@@ -26,7 +29,12 @@ from bot.services.ai_reranker import (
 )
 from bot.services.ai_runtime import AIRuntimeState
 from bot.services.ai_vision import parse_photo_search_output
-from bot.services.api_client import ProductDTO, _response_rows
+from bot.services.api_client import (
+    ProductDTO,
+    _response_rows,
+    product_click_url,
+    render_product_card,
+)
 from bot.services.openai_billing import OpenAICostSummary, _merge_cost_buckets
 from bot.services.search_state import SearchStateStore
 
@@ -53,6 +61,23 @@ def test_api_client_response_rows_accepts_list_and_paginated_dict():
     assert _response_rows(rows) == rows
     assert _response_rows({"results": rows}) == rows
     assert _response_rows({"results": None}) == []
+
+
+def test_product_card_can_render_tracking_link():
+    context_event_id = UUID("11111111-1111-1111-1111-111111111111")
+    tracking_url = product_click_url(
+        public_base_url="https://izlaber.example",
+        product_id=123,
+        context_event_id=context_event_id,
+    )
+    item = product(123, "Tracked product")
+    item = replace(item, tracking_url=tracking_url)
+
+    assert tracking_url == (
+        "https://izlaber.example/api/v1/redirect/products/123/"
+        "?ctx=11111111-1111-1111-1111-111111111111"
+    )
+    assert tracking_url in render_product_card(item, 1, "en")
 
 
 @pytest.mark.asyncio

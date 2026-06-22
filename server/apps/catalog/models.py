@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from django.utils import timezone
 
@@ -208,3 +210,49 @@ class UserPreference(TimestampedModel):
 
     def __str__(self) -> str:
         return f"{self.telegram_user_id}: {self.language_code}"
+
+
+class AnalyticsEvent(models.Model):
+    class Source(models.TextChoices):
+        BOT = "bot", "Bot"
+        REDIRECT = "redirect", "Redirect"
+        SERVER = "server", "Server"
+
+    event_id = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True)
+    event_type = models.SlugField(max_length=64, db_index=True)
+    source = models.CharField(max_length=32, choices=Source.choices, default=Source.BOT)
+    telegram_user_id = models.BigIntegerField(blank=True, null=True, db_index=True)
+    chat_id = models.BigIntegerField(blank=True, null=True, db_index=True)
+    message_id = models.BigIntegerField(blank=True, null=True)
+    visitor_id = models.CharField(max_length=64, blank=True, db_index=True)
+    language_code = models.SlugField(max_length=8, blank=True)
+    input_type = models.SlugField(max_length=32, blank=True)
+    query = models.TextField(blank=True)
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="analytics_events",
+    )
+    source_product_id = models.CharField(max_length=255, blank=True, null=True)
+    product_position = models.PositiveIntegerField(blank=True, null=True)
+    result_count = models.PositiveIntegerField(blank=True, null=True)
+    request_path = models.TextField(blank=True)
+    referrer = models.TextField(blank=True)
+    user_agent = models.TextField(blank=True)
+    ip_hash = models.CharField(max_length=64, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+        indexes = [
+            models.Index(fields=["event_type", "created_at"]),
+            models.Index(fields=["telegram_user_id", "created_at"]),
+            models.Index(fields=["visitor_id", "created_at"]),
+            models.Index(fields=["product", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.event_type} {self.event_id}"

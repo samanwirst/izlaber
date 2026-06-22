@@ -1,5 +1,6 @@
 import logging
 import re
+from dataclasses import replace
 from io import BytesIO
 from uuid import uuid4
 
@@ -19,10 +20,12 @@ from bot.services.ai_vision import (
     identify_product_photo,
     rerank_photo_products_by_image,
 )
+from bot.services.analytics import track_message_event
 from bot.services.api_client import (
     ProductDTO,
     ServerAPIClient,
     ServerAPIError,
+    product_click_url,
     render_product_card,
     render_products,
 )
@@ -203,6 +206,15 @@ async def search_more(message: Message, config: Config) -> None:
         )
         return
 
+    await track_message_event(
+        config=config,
+        message=message,
+        event_type="more_results",
+        language_code=language,
+        input_type="button_or_text",
+        query=session.query,
+        metadata={"offset": session.offset, "candidate_offset": session.candidate_offset},
+    )
     status_message = await message.answer(format_message("search_more_processing", language))
     products = await _next_products(session=session, config=config, message=message)
     if products is None:
@@ -234,12 +246,28 @@ async def search_more(message: Message, config: Config) -> None:
         format_message("found_intro", language, query=session.query, count=len(products)),
         language=language,
     )
-    await _send_products(message, products, start_index=session.offset + 1, language_code=language)
+    await _send_products(
+        message,
+        products,
+        start_index=session.offset + 1,
+        language_code=language,
+        query=session.query,
+        config=config,
+    )
 
 
 @router.message(F.photo)
 async def search_uzum_by_photo(message: Message, config: Config) -> None:
     language = language_from_message(message)
+    await track_message_event(
+        config=config,
+        message=message,
+        event_type="photo_search",
+        language_code=language,
+        input_type="photo",
+        query=message.caption or "",
+        metadata={"photo_count": len(message.photo or [])},
+    )
     photo = _select_photo_for_vision(message.photo or [], config)
     if photo is None:
         await message.answer(
@@ -308,7 +336,14 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
                 ),
                 language=language,
             )
-            await _send_products(message, products, start_index=1, language_code=language)
+            await _send_products(
+                message,
+                products,
+                start_index=1,
+                language_code=language,
+                query=used_query,
+                config=config,
+            )
             return
 
         if not ai_runtime_state.ai_allowed():
@@ -341,7 +376,14 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
             format_message("photo_visual_found_intro", language, count=len(products)),
             language=language,
         )
-        await _send_products(message, products, start_index=1, language_code=language)
+        await _send_products(
+            message,
+            products,
+            start_index=1,
+            language_code=language,
+            query="photo visual match",
+            config=config,
+        )
         return
 
     search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
@@ -363,6 +405,14 @@ async def search_uzum_by_voice(message: Message, config: Config) -> None:
         )
         return
 
+    await track_message_event(
+        config=config,
+        message=message,
+        event_type="voice_search",
+        language_code=language,
+        input_type="voice",
+        metadata={"duration": voice.duration, "file_size": voice.file_size},
+    )
     if voice.duration > config.openai_voice_max_duration_seconds:
         await message.answer(
             format_message("voice_too_long", language),
@@ -427,6 +477,7 @@ async def search_uzum_by_voice(message: Message, config: Config) -> None:
         message=message,
         config=config,
         query=transcript,
+        input_type="voice",
         status_message=status_message,
         empty_key="voice_transcription_failed",
         no_results_key="no_results",
@@ -562,6 +613,7 @@ async def _run_text_search(
     message: Message,
     config: Config,
     query: str,
+    input_type: str = "text",
     status_message: Message | None = None,
     empty_key: str = "empty_query",
     no_results_key: str = "no_results",
@@ -583,6 +635,14 @@ async def _run_text_search(
             )
         return
 
+    await track_message_event(
+        config=config,
+        message=message,
+        event_type="search",
+        language_code=language,
+        input_type=input_type,
+        query=query,
+    )
     ranked_products = await _load_ranked_candidates(
         query=query,
         candidate_offset=0,
@@ -594,6 +654,15 @@ async def _run_text_search(
         return
     if not ranked_products:
         search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
+        await track_message_event(
+            config=config,
+            message=message,
+            event_type="search_no_results",
+            language_code=language,
+            input_type=input_type,
+            query=query,
+            result_count=0,
+        )
         if status_message is not None:
             await _replace_status_message(
                 status_message,
@@ -627,7 +696,14 @@ async def _run_text_search(
             format_message(intro_key, language, query=query, count=len(products)),
             reply_markup=more_results_keyboard(language),
         )
-    await _send_products(message, products, start_index=1, language_code=language)
+    await _send_products(
+        message,
+        products,
+        start_index=1,
+        language_code=language,
+        query=query,
+        config=config,
+    )
 
 
 def _candidate_limit(config: Config) -> int:
@@ -1119,9 +1195,37 @@ async def _send_products(
     *,
     start_index: int,
     language_code: str | None,
+    query: str,
+    config: Config,
 ) -> None:
     for index, product in enumerate(products, start=start_index):
-        caption = render_product_card(product, index, language_code)
+        context_event_id = await track_message_event(
+            config=config,
+            message=message,
+            event_type="view_item_list",
+            language_code=language_code,
+            input_type="product_card",
+            query=query,
+            product_id=product.id,
+            source_product_id=product.source_product_id,
+            product_position=index,
+            result_count=len(products),
+            metadata={
+                "item_list_name": query,
+                "item_id": product.id,
+                "item_name": product.title,
+                "source_product_id": product.source_product_id,
+            },
+        )
+        tracking_url = product_click_url(
+            public_base_url=config.public_base_url,
+            product_id=product.id,
+            context_event_id=context_event_id,
+        )
+        product_for_render = (
+            replace(product, tracking_url=tracking_url) if tracking_url else product
+        )
+        caption = render_product_card(product_for_render, index, language_code)
         if product.cover_image_url:
             try:
                 await message.answer_photo(

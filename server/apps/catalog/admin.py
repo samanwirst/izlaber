@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from apps.catalog.models import Category, Marketplace, Product, ProductSnapshot, Seller
+from apps.catalog.models import (
+    AnalyticsEvent,
+    Category,
+    Marketplace,
+    Product,
+    ProductSnapshot,
+    Seller,
+)
 
 
 @admin.register(Marketplace)
@@ -45,3 +52,19 @@ class ProductAdmin(admin.ModelAdmin):
 class ProductSnapshotAdmin(admin.ModelAdmin):
     list_display = ("product", "price", "availability", "content_hash", "created_at")
     search_fields = ("product__title", "content_hash")
+
+
+@admin.register(AnalyticsEvent)
+class AnalyticsEventAdmin(admin.ModelAdmin):
+    list_display = (
+        "event_type",
+        "source",
+        "telegram_user_id",
+        "visitor_id",
+        "product",
+        "result_count",
+        "created_at",
+    )
+    search_fields = ("event_type", "query", "source_product_id", "visitor_id")
+    list_filter = ("event_type", "source", "created_at")
+    readonly_fields = ("event_id", "created_at")

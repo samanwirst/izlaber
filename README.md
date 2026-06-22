@@ -69,6 +69,14 @@ Bot search flow:
 - The localized `Yana` / `Еще` / `More` keyboard button sends the next 5 cards for the latest query of that exact chat/user.
 - Any new product text resets that user's search offset, so old searches are not mixed.
 
+Analytics:
+
+- Bot actions are stored in `catalog_analyticsevent`: `/start`, `/help`, `/lang`, text/photo/voice searches, no-result searches, `More`, product impressions, and product clicks.
+- Search and impression events follow marketplace-friendly event names where practical: `search`, `view_item_list`, and `select_item`.
+- Product click tracking uses `/api/v1/redirect/products/{id}/` and then redirects to the real product URL. Set `BOT_PUBLIC_BASE_URL` to the public server origin so Telegram users can open those tracking links.
+- Cookie-level click attribution is off by default. Enable `ANALYTICS_COOKIE_ENABLED=true` only after the privacy policy/consent flow covers analytics cookies.
+- Raw IP addresses are not stored. Optional IP hashing is controlled by `ANALYTICS_HASH_IP`.
+
 Guest Mode:
 
 - If Telegram Guest Mode is enabled for the bot in BotFather, users can mention the bot from chats where it is not a member.

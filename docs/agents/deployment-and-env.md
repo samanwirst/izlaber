@@ -19,6 +19,17 @@ SERVER_API_BASE_URL
 
 Optional AI/photo/voice behavior is controlled by `OPENAI_*` and `PHOTO_VISUAL_*` variables.
 
+Analytics variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `BOT_ANALYTICS_ENABLED` | Enables bot-side event writes to the server. |
+| `BOT_ANALYTICS_TIMEOUT` | Short timeout for analytics writes so user search is not blocked. |
+| `BOT_PUBLIC_BASE_URL` | Public server origin used to generate product click redirect links. |
+| `ANALYTICS_COOKIE_ENABLED` | Enables first-party click attribution cookie on redirect endpoint. |
+| `ANALYTICS_COOKIE_NAME` | Cookie name, default `izlaber_cid`. |
+| `ANALYTICS_HASH_IP` | Stores salted IP hashes for redirect events when enabled. |
+
 ## Docker Compose
 
 Services:
@@ -62,4 +73,3 @@ python -m bot.setup_profile
 ```
 
 `./scripts/run_uzum_full.sh` checks server reachability before non-dry runs and runs audit after successful unlimited full runs unless disabled by env.
-
