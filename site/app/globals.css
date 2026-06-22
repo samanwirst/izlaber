@@ -176,6 +176,16 @@ a {
   height: 230px;
 }
 
+.chart-placeholder {
+  animation: pulse 1.3s ease-in-out infinite;
+  background:
+    linear-gradient(90deg, rgba(31, 122, 84, 0.08), rgba(31, 92, 153, 0.08)),
+    var(--panel-strong);
+  border-radius: 8px;
+  height: 100%;
+  width: 100%;
+}
+
 .mini-metrics {
   align-items: center;
   background: var(--panel-strong);

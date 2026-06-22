@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -26,6 +27,7 @@ type DashboardProps = {
 };
 
 export function AnalyticsDashboard({ summary }: DashboardProps) {
+  const chartsReady = useClientReady();
   const conversion = [
     { name: "Searches", value: summary.kpis.searches },
     { name: "Impressions", value: summary.kpis.impressions },
@@ -66,56 +68,64 @@ export function AnalyticsDashboard({ summary }: DashboardProps) {
             caption="Searches, impressions and clicks by day"
           />
           <div className="chart">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={summary.time_series}>
-                <defs>
-                  <linearGradient id="searches" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="5%" stopColor="#1f7a54" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#1f7a54" stopOpacity={0.02} />
-                  </linearGradient>
-                  <linearGradient id="impressions" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="5%" stopColor="#1f5c99" stopOpacity={0.32} />
-                    <stop offset="95%" stopColor="#1f5c99" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#e7e0d2" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="date" tickFormatter={formatDate} tickLine={false} axisLine={false} />
-                <YAxis tickLine={false} axisLine={false} width={36} />
-                <Tooltip content={<ChartTooltip />} />
-                <Area
-                  dataKey="impressions"
-                  name="Impressions"
-                  type="monotone"
-                  stroke="#1f5c99"
-                  fill="url(#impressions)"
-                  strokeWidth={2}
-                />
-                <Area
-                  dataKey="searches"
-                  name="Searches"
-                  type="monotone"
-                  stroke="#1f7a54"
-                  fill="url(#searches)"
-                  strokeWidth={2}
-                />
-                <Line dataKey="clicks" name="Clicks" stroke="#c57a1b" strokeWidth={2} dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
+            {chartsReady ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={summary.time_series}>
+                  <defs>
+                    <linearGradient id="searches" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="5%" stopColor="#1f7a54" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#1f7a54" stopOpacity={0.02} />
+                    </linearGradient>
+                    <linearGradient id="impressions" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="5%" stopColor="#1f5c99" stopOpacity={0.32} />
+                      <stop offset="95%" stopColor="#1f5c99" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="#e7e0d2" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="date" tickFormatter={formatDate} tickLine={false} axisLine={false} />
+                  <YAxis tickLine={false} axisLine={false} width={36} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Area
+                    dataKey="impressions"
+                    name="Impressions"
+                    type="monotone"
+                    stroke="#1f5c99"
+                    fill="url(#impressions)"
+                    strokeWidth={2}
+                  />
+                  <Area
+                    dataKey="searches"
+                    name="Searches"
+                    type="monotone"
+                    stroke="#1f7a54"
+                    fill="url(#searches)"
+                    strokeWidth={2}
+                  />
+                  <Line dataKey="clicks" name="Clicks" stroke="#c57a1b" strokeWidth={2} dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <ChartPlaceholder />
+            )}
           </div>
         </div>
 
         <div className="panel span-4">
           <PanelHeader title="Funnel" caption="Search to product click path" />
           <div className="chart chart-small">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={conversion} layout="vertical" margin={{ left: 18 }}>
-                <CartesianGrid stroke="#e7e0d2" strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} width={82} />
-                <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="value" radius={[0, 5, 5, 0]} fill="#1f7a54" />
-              </BarChart>
-            </ResponsiveContainer>
+            {chartsReady ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={conversion} layout="vertical" margin={{ left: 18 }}>
+                  <CartesianGrid stroke="#e7e0d2" strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} width={82} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Bar dataKey="value" radius={[0, 5, 5, 0]} fill="#1f7a54" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <ChartPlaceholder />
+            )}
           </div>
           <div className="mini-metrics">
             <span>Consent active</span>
@@ -171,9 +181,24 @@ export function AnalyticsDashboard({ summary }: DashboardProps) {
       </section>
 
       <section className="grid-12">
-        <ChartPanel title="Event mix" caption="All tracked event types" data={summary.event_mix} />
-        <ChartPanel title="Languages" caption="Telegram language split" data={summary.languages} />
-        <ChartPanel title="Input types" caption="Text, photo, voice and clicks" data={summary.input_types} />
+        <ChartPanel
+          caption="All tracked event types"
+          data={summary.event_mix}
+          ready={chartsReady}
+          title="Event mix"
+        />
+        <ChartPanel
+          caption="Telegram language split"
+          data={summary.languages}
+          ready={chartsReady}
+          title="Languages"
+        />
+        <ChartPanel
+          caption="Text, photo, voice and clicks"
+          data={summary.input_types}
+          ready={chartsReady}
+          title="Input types"
+        />
       </section>
     </main>
   );
@@ -200,21 +225,41 @@ function PanelHeader({ title, caption }: { title: string; caption: string }) {
   );
 }
 
-function ChartPanel({ title, caption, data }: { title: string; caption: string; data: NamedValue[] }) {
+function ChartPanel({
+  title,
+  caption,
+  data,
+  ready,
+}: {
+  title: string;
+  caption: string;
+  data: NamedValue[];
+  ready: boolean;
+}) {
   return (
     <div className="panel span-4">
       <PanelHeader title={title} caption={caption} />
       <div className="chart chart-small">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie data={data.slice(0, 6)} dataKey="value" innerRadius={52} outerRadius={80} paddingAngle={2}>
-              {data.slice(0, 6).map((entry, index) => (
-                <Cell fill={CHART_COLORS[index % CHART_COLORS.length]} key={entry.name} />
-              ))}
-            </Pie>
-            <Tooltip content={<ChartTooltip />} />
-          </PieChart>
-        </ResponsiveContainer>
+        {ready ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={data.slice(0, 6)}
+                dataKey="value"
+                innerRadius={52}
+                outerRadius={80}
+                paddingAngle={2}
+              >
+                {data.slice(0, 6).map((entry, index) => (
+                  <Cell fill={CHART_COLORS[index % CHART_COLORS.length]} key={entry.name} />
+                ))}
+              </Pie>
+              <Tooltip content={<ChartTooltip />} />
+            </PieChart>
+          </ResponsiveContainer>
+        ) : (
+          <ChartPlaceholder />
+        )}
       </div>
       <div className="legend-list">
         {data.slice(0, 5).map((item, index) => (
@@ -232,6 +277,20 @@ function ChartPanel({ title, caption, data }: { title: string; caption: string; 
 
 function EmptyState({ label }: { label: string }) {
   return <p className="empty-state">{label}</p>;
+}
+
+function ChartPlaceholder() {
+  return <div aria-hidden="true" className="chart-placeholder" />;
+}
+
+function useClientReady() {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    setReady(true);
+  }, []);
+
+  return ready;
 }
 
 function ChartTooltip({ active, payload, label }: TooltipProps) {
