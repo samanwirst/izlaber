@@ -1,0 +1,90 @@
+name: izlaber
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    init: true
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://izlaber:izlaber@postgres:5432/izlaber}
+      SERVER_API_BASE_URL: http://server:8000/api
+    ports:
+      - "${SERVER_PORT:-8001}:8000"
+    volumes:
+      - ./server:/app/server
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz/', timeout=2).read()",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+
+  bot:
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
+    init: true
+    env_file:
+      - .env
+    environment:
+      SERVER_API_BASE_URL: http://server:8000/api
+    volumes:
+      - ./bot:/app/bot
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+
+  parser:
+    build:
+      context: .
+      dockerfile: Dockerfile.parser
+    init: true
+    env_file:
+      - .env
+    environment:
+      SERVER_API_BASE_URL: http://server:8000/api
+    volumes:
+      - ./parsers:/app/parsers
+      - ./.parser_state:/app/.parser_state
+    profiles:
+      - parser
+    depends_on:
+      server:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: izlaber
+      POSTGRES_PASSWORD: izlaber
+      POSTGRES_DB: izlaber
+    ports:
+      - "${POSTGRES_PORT:-15432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U izlaber -d izlaber"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  pgdata:
