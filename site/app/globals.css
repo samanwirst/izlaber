@@ -1,0 +1,388 @@
+:root {
+  --background: #f6f3ec;
+  --panel: #fffdf8;
+  --panel-strong: #f0e7d7;
+  --text: #17211a;
+  --muted: #657061;
+  --line: #dfd7c8;
+  --green: #1f7a54;
+  --blue: #1f5c99;
+  --gold: #c57a1b;
+  --shadow: 0 16px 50px rgba(49, 40, 24, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(31, 122, 84, 0.14), transparent 32rem),
+    linear-gradient(135deg, #f9f6ee 0%, #efe7d8 48%, #f7f4ef 100%);
+  font-family: "IBM Plex Sans", "Aptos", "Segoe UI", sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.dashboard-shell {
+  min-height: 100vh;
+  padding: 28px;
+}
+
+.topbar {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  margin: 0 auto 22px;
+  max-width: 1480px;
+}
+
+.topbar h1 {
+  font-size: clamp(30px, 4vw, 54px);
+  letter-spacing: 0;
+  line-height: 0.95;
+  margin: 6px 0 10px;
+}
+
+.eyebrow {
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.muted,
+.panel-header p,
+.metric-card small,
+.table-row small,
+.product-row small {
+  color: var(--muted);
+}
+
+.status-pill {
+  align-items: center;
+  background: rgba(255, 253, 248, 0.76);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 8px;
+  padding: 9px 13px;
+}
+
+.status-pill span {
+  background: var(--green);
+  border-radius: 999px;
+  box-shadow: 0 0 0 5px rgba(31, 122, 84, 0.14);
+  display: block;
+  height: 8px;
+  width: 8px;
+}
+
+.kpi-grid,
+.grid-12 {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  margin: 0 auto 16px;
+  max-width: 1480px;
+}
+
+.metric-card,
+.panel {
+  background: rgba(255, 253, 248, 0.88);
+  border: 1px solid rgba(223, 215, 200, 0.9);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.metric-card {
+  grid-column: span 3;
+  min-height: 138px;
+  padding: 18px;
+}
+
+.metric-card span {
+  color: var(--muted);
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.metric-card strong {
+  display: block;
+  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: clamp(30px, 4vw, 46px);
+  letter-spacing: 0;
+  margin: 14px 0 8px;
+}
+
+.panel {
+  padding: 18px;
+}
+
+.span-4 {
+  grid-column: span 4;
+}
+
+.span-5 {
+  grid-column: span 5;
+}
+
+.span-7 {
+  grid-column: span 7;
+}
+
+.span-8 {
+  grid-column: span 8;
+}
+
+.panel-header {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.panel-header h2 {
+  font-size: 19px;
+  line-height: 1.1;
+  margin: 0 0 4px;
+}
+
+.panel-header p {
+  font-size: 13px;
+  margin: 0;
+}
+
+.chart {
+  height: 360px;
+}
+
+.chart-small {
+  height: 230px;
+}
+
+.mini-metrics {
+  align-items: center;
+  background: var(--panel-strong);
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding: 14px;
+}
+
+.mini-metrics span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mini-metrics strong {
+  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+.table-list,
+.product-list {
+  display: grid;
+  gap: 8px;
+}
+
+.table-row,
+.product-row {
+  align-items: center;
+  background: rgba(246, 243, 236, 0.7);
+  border: 1px solid rgba(223, 215, 200, 0.7);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  min-height: 58px;
+  padding: 10px 12px;
+}
+
+.table-row {
+  grid-template-columns: 30px 1fr auto;
+}
+
+.product-row {
+  grid-template-columns: 30px 50px 1fr auto;
+}
+
+.rank {
+  color: var(--muted);
+  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+}
+
+.table-row strong,
+.product-row strong {
+  display: -webkit-box;
+  font-size: 14px;
+  line-height: 1.25;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.table-row small,
+.product-row small {
+  display: block;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.table-row b,
+.product-row b {
+  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 14px;
+}
+
+.product-image {
+  align-items: center;
+  background: #efe7d8;
+  border-radius: 8px;
+  display: flex;
+  height: 50px;
+  justify-content: center;
+  overflow: hidden;
+  width: 50px;
+}
+
+.product-image img {
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.legend-list {
+  display: grid;
+  gap: 8px;
+}
+
+.legend-list span {
+  align-items: center;
+  color: var(--muted);
+  display: grid;
+  font-size: 13px;
+  gap: 8px;
+  grid-template-columns: 10px 1fr auto;
+}
+
+.legend-list i {
+  border-radius: 999px;
+  display: block;
+  height: 10px;
+  width: 10px;
+}
+
+.legend-list b {
+  color: var(--text);
+  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+.chart-tooltip {
+  background: rgba(23, 33, 26, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: #fffdf8;
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.chart-tooltip strong,
+.chart-tooltip span {
+  font-size: 12px;
+}
+
+.empty-state {
+  color: var(--muted);
+  margin: 16px 0 0;
+}
+
+.error-shell {
+  align-items: center;
+  display: flex;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.error-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 0 auto;
+  max-width: 640px;
+  padding: 26px;
+}
+
+.skeleton-block {
+  animation: pulse 1.3s ease-in-out infinite;
+  min-height: 120px;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.62;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 980px) {
+  .dashboard-shell {
+    padding: 18px;
+  }
+
+  .topbar {
+    display: grid;
+    gap: 12px;
+  }
+
+  .metric-card,
+  .span-4,
+  .span-5,
+  .span-7,
+  .span-8 {
+    grid-column: span 12;
+  }
+
+  .metric-card {
+    min-height: 118px;
+  }
+}
+
+@media (max-width: 620px) {
+  .kpi-grid,
+  .grid-12 {
+    gap: 12px;
+  }
+
+  .product-row {
+    grid-template-columns: 24px 44px 1fr;
+  }
+
+  .product-row b {
+    grid-column: 3;
+  }
+
+  .chart {
+    height: 300px;
+  }
+}

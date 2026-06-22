@@ -26,6 +26,14 @@ Bot:
 python -m bot
 ```
 
+Analytics site:
+
+```bash
+cd site
+npm install
+npm run dev
+```
+
 Parser test mode:
 
 ```bash
@@ -35,15 +43,17 @@ python -m parsers.uzum_market.cli crawl --mode test --limit 100
 ## Run With Docker
 
 ```bash
-./scripts/docker-start.sh server bot
+./scripts/docker-start.sh server bot site
 docker compose logs -f server
 docker compose logs -f bot
+docker compose logs -f site
 docker compose down
 ```
 
 Notes:
 
 - Compose starts PostgreSQL and stores data in the `pgdata` named volume.
+- The analytics site is exposed on `SITE_PORT` (`3000` by default).
 - `docker compose down` keeps `pgdata`.
 - `docker compose down -v` removes `pgdata`; do not use it casually.
 - The parser service is behind the `parser` profile.
@@ -72,4 +82,3 @@ Run `python -m bot.setup_profile` after changing bot profile names, descriptions
 3. Do not revert user changes.
 4. Stage explicit paths, not `git add -A`, when the worktree is mixed.
 5. Run scoped verification before final response.
-

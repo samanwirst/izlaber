@@ -19,6 +19,13 @@ SERVER_API_BASE_URL
 
 Optional AI/photo/voice behavior is controlled by `OPENAI_*` and `PHOTO_VISUAL_*` variables.
 
+Analytics site variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `SITE_PORT` | Host port for the Next.js analytics site in Docker Compose. |
+| `ANALYTICS_API_KEY` | Optional dedicated internal API key for the analytics site. Falls back to `BOT_API_KEY` if empty. |
+
 Consent variables:
 
 | Variable | Purpose |
@@ -26,8 +33,10 @@ Consent variables:
 | `BOT_CONSENT_ENABLED` | Enables bot-side consent gate. Keep enabled in production. |
 | `BOT_CONSENT_VERSION` | Version string stored for new Telegram user consent. |
 | `USER_CONSENT_VERSION` | Server fallback/current version; keep equal to `BOT_CONSENT_VERSION`. |
-| `BOT_PRIVACY_POLICY_URL` | Optional URL button shown on the consent prompt. |
-| `BOT_SPONSORED_ADS_POLICY_URL` | Optional URL button shown on the consent prompt. |
+| `BOT_PRIVACY_POLICY_URL` | Optional consent prompt URL. Empty value derives from `BOT_PUBLIC_BASE_URL/legal/privacy/`. |
+| `BOT_SPONSORED_ADS_POLICY_URL` | Optional consent prompt URL. Empty value derives from `BOT_PUBLIC_BASE_URL/legal/sponsored-ads/`. |
+
+Public legal pages are served by Django at `/legal/privacy/` and `/legal/sponsored-ads/`.
 
 Analytics variables:
 
@@ -49,14 +58,16 @@ Services:
 | `postgres` | PostgreSQL 16 with `pgdata` named volume. |
 | `server` | Django API, runs migrations before runserver. |
 | `bot` | Telegram bot polling process. |
+| `site` | Next.js analytics dashboard. |
 | `parser` | Optional parser profile service. |
 
 Commands:
 
 ```bash
-docker compose up --build server bot
+docker compose up --build server bot site
 docker compose logs -f server
 docker compose logs -f bot
+docker compose logs -f site
 docker compose --profile parser run --rm parser python -m parsers.uzum_market.cli crawl --mode test --limit 100
 docker compose down
 ```
@@ -66,6 +77,7 @@ docker compose down
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `SERVER_PORT` | `8001` | Host port for Django API in Docker. |
+| `SITE_PORT` | `3000` | Host port for the analytics site in Docker. |
 | `POSTGRES_PORT` | `15432` | Host port for PostgreSQL in Docker. |
 
 Direct local Django defaults to port `8000` when run with README commands.

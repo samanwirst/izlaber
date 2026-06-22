@@ -8,6 +8,7 @@ The repository has three main services:
 
 - `bot/`: aiogram 3 Telegram bot. It talks to the server API only.
 - `server/`: Django + DRF API, catalog storage, search, crawl ingestion, and migrations.
+- `site/`: Next.js analytics dashboard. It talks to the server API from server-side code only.
 - `parsers/uzum_market/`: standalone crawler pipeline that writes products through internal server endpoints.
 
 ## Stack
@@ -16,6 +17,7 @@ The repository has three main services:
 - Django 5.2, Django REST Framework, drf-spectacular.
 - aiogram 3, aiohttp, python-dotenv.
 - PostgreSQL for production-sized data; SQLite fallback for direct local runs.
+- Next.js 16 + React 19 analytics site under `site/`.
 - Ruff for linting; pytest, pytest-django, and pytest-asyncio for tests.
 
 ## Important Paths
@@ -27,6 +29,7 @@ The repository has three main services:
 | `bot/locales.py` | Uzbek/Russian/English bot copy, button labels, product labels, language helpers. |
 | `server/apps/catalog/` | Product, marketplace, category, user preference models and read/search API. |
 | `server/apps/crawling/` | Parser ingestion API, crawl run tracking, product upsert/deactivation services. |
+| `site/` | Next.js analytics dashboard for aggregated bot/search/product events. |
 | `server/apps/*/migrations/` | Django migrations. Commit migrations with model changes. |
 | `parsers/uzum_market/` | Browser/GraphQL crawler, normalizer, checkpoints, parser CLI. |
 | `scripts/` | Operational wrappers for Docker, parser runs, audit, and search/visual index rebuilds. |
@@ -50,6 +53,7 @@ PYTHONPATH=server python server/manage.py migrate
 PYTHONPATH=server python server/manage.py runserver 0.0.0.0:8000
 python -m bot
 ./scripts/docker-start.sh server bot
+cd site && npm install && npm run dev
 ```
 
 Lint and formatting:
@@ -66,9 +70,11 @@ No dedicated repo-wide formatter command is documented. If formatting is needed,
 
 Typecheck:
 
-```text
-No dedicated typecheck command or mypy/pyright config exists yet.
+```bash
+cd site && npm run typecheck
 ```
+
+No dedicated Python typecheck command or mypy/pyright config exists yet.
 
 Tests:
 
@@ -82,7 +88,8 @@ Build:
 
 ```bash
 docker compose build server bot parser
-docker compose up --build server bot
+docker compose build server bot site parser
+docker compose up --build server bot site
 ```
 
 Database and maintenance:
@@ -100,6 +107,7 @@ PYTHONPATH=server python server/manage.py migrate
 - Keep boundaries strict: bot never imports Django models or parser code; parser never writes the database directly; server does not import bot/parser runtime code.
 - Bot data access goes through `bot.services.api_client.ServerAPIClient` using `X-Internal-API-Key`.
 - Parser ingestion goes through `server/apps/crawling/` endpoints using `PARSER_API_KEY`.
+- Analytics site data fetching must stay server-side in `site/lib/`; never expose `BOT_API_KEY` or `ANALYTICS_API_KEY` to browser components.
 - User-facing Telegram copy is centralized in `bot/locales.py`; update Uzbek, Russian, and English together.
 - When code changes alter setup, commands, API contracts, env vars, data behavior, or agent workflow, update the relevant README or `docs/agents/*` file in the same change.
 - Bot pagination state is in `bot/services/search_state.py`; persistent user preferences live in server DB via `UserPreference`.
@@ -111,6 +119,7 @@ PYTHONPATH=server python server/manage.py migrate
 - Documentation-only changes: run `.venv/bin/ruff check <touched python paths>` only if Python files changed; otherwise run `git diff --check`.
 - Small bot changes: run Ruff on touched bot files and a focused pytest target such as `server/tests/test_bot_ai.py` or `server/tests/test_bot_locales.py`.
 - Small server changes: run Ruff on touched server files, `PYTHONPATH=server python server/manage.py check`, and focused Django tests.
+- Site changes: run `cd site && npm run typecheck` and `cd site && npm run build`.
 - Model or migration changes: add/commit migrations, run `PYTHONPATH=server python server/manage.py makemigrations --check`, `PYTHONPATH=server python server/manage.py migrate`, and focused tests.
 - Parser changes: run `PYTHONPATH=server:. .venv/bin/pytest parsers/uzum_market/test_normalizer.py`; avoid live crawls unless explicitly requested.
 - Cross-cutting changes: run `.venv/bin/ruff check .` and `PYTHONPATH=server:. .venv/bin/pytest`.
@@ -121,6 +130,7 @@ PYTHONPATH=server python server/manage.py migrate
 - Do not commit `.parser_state/`, `server/db.sqlite3`, `__pycache__/`, `.ruff_cache/`, `.pytest_cache/`, venvs, logs, or local browser profiles.
 - Do not use `docker compose down -v` unless the user explicitly asks; it removes the PostgreSQL `pgdata` volume.
 - Do not add dependencies casually. Update `pyproject.toml` and/or `server/requirements.txt` intentionally and document why.
+- Do not put `NEXT_PUBLIC_` on internal API keys; analytics site calls the Django API from server runtime only.
 - Do not create data migrations or destructive cleanup scripts without clear confirmation.
 - Do not bypass captcha, private/account pages, carts, payment flows, or anti-abuse protections.
 

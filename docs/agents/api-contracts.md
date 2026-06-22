@@ -25,6 +25,7 @@ All internal consumers use `X-Internal-API-Key`.
 | `GET /api/v1/user-consents/` | Load Telegram consent records. Bot preload uses `active_only=true&version=...`. |
 | `GET/POST /api/v1/user-consents/{telegram_user_id}/` | Read one consent record or record `accept`, `decline`, or `revoke`. |
 | `POST /api/v1/analytics/events/` | Store bot-side analytics events. |
+| `GET /api/v1/analytics/summary/` | Aggregated analytics dashboard data for the Next.js analytics site. Supports `days` up to 180 and returns `period`, `kpis`, `time_series`, `event_mix`, `top_queries`, `top_products`, `languages`, `input_types`, and `consents`. |
 | `GET /api/v1/redirect/products/{product_id}/` | Store product click analytics, optionally set analytics cookie, then redirect to product URL. |
 
 Bot client wrapper: `bot/services/api_client.py`.

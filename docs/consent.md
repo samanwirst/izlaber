@@ -34,6 +34,10 @@ The consent prompt covers:
 - `BOT_CONSENT_VERSION` is stored with every user decision.
 - `USER_CONSENT_VERSION` is the server fallback/current version; keep it equal to
   `BOT_CONSENT_VERSION`.
+- Public policy pages are served by Django at `/legal/privacy/` and
+  `/legal/sponsored-ads/`.
+- If `BOT_PRIVACY_POLICY_URL` and `BOT_SPONSORED_ADS_POLICY_URL` are empty, the bot
+  derives them from `BOT_PUBLIC_BASE_URL`.
 - Bump the version when consent text, covered data, analytics scope, or advertising
   scope changes materially.
 - `GET /api/v1/user-consents/?active_only=true&version=...` preloads active users.

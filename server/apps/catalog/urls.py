@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from apps.catalog.views import (
     AnalyticsEventCreateView,
+    AnalyticsSummaryView,
     CategoryViewSet,
     MarketplaceViewSet,
     ProductClickRedirectView,
@@ -20,6 +21,7 @@ router.register("products", ProductViewSet, basename="product")
 
 urlpatterns = router.urls + [
     path("analytics/events/", AnalyticsEventCreateView.as_view(), name="analytics-event-create"),
+    path("analytics/summary/", AnalyticsSummaryView.as_view(), name="analytics-summary"),
     path("user-consents/", UserConsentListView.as_view(), name="user-consents"),
     path(
         "user-consents/<str:telegram_user_id>/",

@@ -73,12 +73,23 @@ def load_config() -> Config:
 
     parse_mode = getenv("BOT_PARSE_MODE", "HTML").strip() or None
     log_level = getenv("LOG_LEVEL", "INFO").upper()
+    public_base_url = getenv("BOT_PUBLIC_BASE_URL", "").rstrip("/")
+    privacy_policy_url = _policy_url(
+        getenv("BOT_PRIVACY_POLICY_URL"),
+        public_base_url,
+        "/legal/privacy/",
+    )
+    sponsored_ads_policy_url = _policy_url(
+        getenv("BOT_SPONSORED_ADS_POLICY_URL"),
+        public_base_url,
+        "/legal/sponsored-ads/",
+    )
 
     return Config(
         bot=BotConfig(token=token, parse_mode=parse_mode),
         log_level=log_level,
         server_api_base_url=getenv("SERVER_API_BASE_URL", "http://127.0.0.1:8000/api").rstrip("/"),
-        public_base_url=getenv("BOT_PUBLIC_BASE_URL", "").rstrip("/"),
+        public_base_url=public_base_url,
         bot_api_key=getenv("BOT_API_KEY", ""),
         product_search_limit=int(getenv("BOT_PRODUCT_SEARCH_LIMIT", "5")),
         server_api_timeout=float(getenv("BOT_SERVER_API_TIMEOUT", "10")),
@@ -86,8 +97,8 @@ def load_config() -> Config:
         in {"1", "true", "yes"},
         consent_version=getenv("BOT_CONSENT_VERSION", "2026-06-consent-v1").strip()
         or "2026-06-consent-v1",
-        privacy_policy_url=getenv("BOT_PRIVACY_POLICY_URL", "").strip(),
-        sponsored_ads_policy_url=getenv("BOT_SPONSORED_ADS_POLICY_URL", "").strip(),
+        privacy_policy_url=privacy_policy_url,
+        sponsored_ads_policy_url=sponsored_ads_policy_url,
         analytics_enabled=getenv("BOT_ANALYTICS_ENABLED", "true").lower()
         in {"1", "true", "yes"},
         analytics_timeout=float(getenv("BOT_ANALYTICS_TIMEOUT", "2")),
@@ -179,6 +190,15 @@ def _optional_float(value: str | None, *, default: float | None) -> float | None
     if not value:
         return None
     return float(value)
+
+
+def _policy_url(value: str | None, public_base_url: str, path: str) -> str:
+    explicit = (value or "").strip()
+    if explicit:
+        return explicit
+    if not public_base_url:
+        return ""
+    return f"{public_base_url}{path}"
 
 
 def _photo_detail(value: str) -> str:

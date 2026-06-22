@@ -6,6 +6,7 @@
 | --- | --- | --- | --- |
 | `bot/` | Bot modules, shared installed dependencies | Django apps, parser modules, direct DB code | Server API via `ServerAPIClient`. |
 | `server/` | Django apps under `server/apps/` | Bot handlers/services, parser runtime | DRF endpoints under `/api/v1/` and `/api/internal/`. |
+| `site/` | Next.js App Router files under `site/app/`, server utilities under `site/lib/` | Bot code, parser code, direct DB code, browser-exposed internal keys | Server-side calls to `/api/v1/analytics/summary/`. |
 | `parsers/` | Parser modules, shared installed dependencies | Django models, bot code | Server internal API via parser storage client. |
 
 ## Server Apps
@@ -39,6 +40,15 @@
 | `pipeline.py` | Crawl orchestration, delta checks, batch writes. |
 | `storage.py` | Server API writes and local checkpoint store. |
 
+## Analytics Site Structure
+
+| Path | Responsibility |
+| --- | --- |
+| `site/app/page.tsx` | Dynamic dashboard route; fetches summary server-side. |
+| `site/app/components/AnalyticsDashboard.tsx` | Client-only chart rendering from already aggregated data. |
+| `site/lib/api.ts` | Internal server API fetch with `ANALYTICS_API_KEY` or `BOT_API_KEY`. |
+| `site/lib/types.ts` | TypeScript contract for `/api/v1/analytics/summary/`. |
+
 ## Search Architecture
 
 - PostgreSQL path uses `Product.search_text`, GIN/trigram behavior, price filters, and fallback relaxation.
@@ -51,4 +61,3 @@
 - Persist durable user preferences in server DB, not local bot files.
 - Keep parser checkpoints under `.parser_state/`.
 - Avoid adding cross-service shared state unless the server owns it.
-

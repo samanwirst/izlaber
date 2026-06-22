@@ -5,6 +5,7 @@ Telegram-based marketplace aggregator with separated services:
 ```text
 bot/                 Telegram bot, talks only to DRF API
 server/              Django + DRF catalog and ingestion API
+site/                Next.js analytics dashboard
 parsers/uzum_market/ Standalone marketplace parser pipeline
 ```
 
@@ -64,6 +65,7 @@ Bot search flow:
 
 - Before search, the bot requires consent for personal data processing and sponsored ads. Without active consent, `/start`, text, photo, voice, guest search, callbacks, and admin commands are blocked and the bot shows the consent prompt again.
 - Consent decisions are stored in the server database as `UserConsent` records. `BOT_CONSENT_VERSION` and `USER_CONSENT_VERSION` must match; bump the version whenever the consent text or covered data uses materially change.
+- Public policy pages are served by Django at `/legal/privacy/` and `/legal/sponsored-ads/`. If `BOT_PRIVACY_POLICY_URL` or `BOT_SPONSORED_ADS_POLICY_URL` are empty, the bot derives them from `BOT_PUBLIC_BASE_URL`.
 - Users can review or revoke consent with `/consent`. Revoked/declined users can accept again from the same prompt.
 - Implementation notes and legal-source links are in `docs/consent.md`.
 - User sends a product name.
@@ -77,9 +79,24 @@ Analytics:
 
 - Bot actions are stored in `catalog_analyticsevent`: `/start`, `/help`, `/lang`, text/photo/voice searches, no-result searches, `More`, product impressions, and product clicks.
 - Search and impression events follow marketplace-friendly event names where practical: `search`, `view_item_list`, and `select_item`.
+- The analytics dashboard lives in `site/` and reads aggregated data from `GET /api/v1/analytics/summary/` using `ANALYTICS_API_KEY` or `BOT_API_KEY`.
 - Product click tracking uses `/api/v1/redirect/products/{id}/` and then redirects to the real product URL. Set `BOT_PUBLIC_BASE_URL` to the public server origin so Telegram users can open those tracking links.
 - Cookie-level click attribution is off by default. Enable `ANALYTICS_COOKIE_ENABLED=true` only when the active consent text and privacy policy cover analytics cookies.
 - Raw IP addresses are not stored. Optional IP hashing is controlled by `ANALYTICS_HASH_IP`.
+
+Run analytics site locally:
+
+```bash
+cd site
+npm install
+npm run dev
+```
+
+Docker exposes the analytics site on `SITE_PORT` (`3000` by default):
+
+```bash
+docker compose up --build server site
+```
 
 Guest Mode:
 
@@ -181,7 +198,7 @@ Fast local launch for the API and bot:
 Equivalent raw Docker command:
 
 ```bash
-docker compose up --build server bot
+docker compose up --build server bot site
 ```
 
 Docker starts PostgreSQL by default and points the API at
@@ -190,6 +207,7 @@ state, virtualenvs, and caches are excluded from Docker build context by
 `.dockerignore`, so image builds do not upload local data.
 The API is exposed on host port `8001` by default; override with `SERVER_PORT`.
 PostgreSQL is exposed on host port `15432` by default; override with `POSTGRES_PORT`.
+The analytics site is exposed on host port `3000` by default; override with `SITE_PORT`.
 `docker compose down` keeps named volumes such as `pgdata`; only
 `docker compose down -v` removes them.
 

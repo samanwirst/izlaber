@@ -5,7 +5,7 @@ from uuid import UUID
 import pytest
 from aiogram.types import Chat, Message, PhotoSize
 
-from bot.config import BotConfig, Config
+from bot.config import BotConfig, Config, _policy_url
 from bot.handlers.admin import _format_usd, _is_openai_status_admin
 from bot.handlers.common import (
     _expansion_filters,
@@ -81,6 +81,18 @@ def test_product_card_can_render_tracking_link():
         "?ctx=11111111-1111-1111-1111-111111111111"
     )
     assert tracking_url in render_product_card(item, 1, "en")
+
+
+def test_policy_urls_are_derived_from_public_base_url():
+    assert _policy_url("", "https://izlaber.example", "/legal/privacy/") == (
+        "https://izlaber.example/legal/privacy/"
+    )
+    assert _policy_url(None, "", "/legal/privacy/") == ""
+    assert _policy_url(
+        "https://static.example/privacy",
+        "https://izlaber.example",
+        "/legal/privacy/",
+    ) == "https://static.example/privacy"
 
 
 @pytest.mark.asyncio

@@ -16,6 +16,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+!/site/lib/
+!/site/lib/**
 parts/
 sdist/
 var/
@@ -165,7 +167,7 @@ venv.bak/
 .ropeproject
 
 # mkdocs documentation
-/site
+/docs/site/
 
 # mypy
 .mypy_cache/
@@ -205,6 +207,20 @@ tempCodeRunnerFile.py
 
 # Ruff stuff:
 .ruff_cache/
+
+# Node / Next.js
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+out/
+**/out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tsbuildinfo
+**/*.tsbuildinfo
 
 # PyPI configuration file
 .pypirc

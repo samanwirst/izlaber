@@ -51,6 +51,22 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  site:
+    build:
+      context: .
+      dockerfile: site/Dockerfile
+    init: true
+    env_file:
+      - .env
+    environment:
+      SERVER_API_BASE_URL: http://server:8000/api
+    ports:
+      - "${SITE_PORT:-3000}:3000"
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+
   parser:
     build:
       context: .

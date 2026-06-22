@@ -1,8 +1,10 @@
 import hashlib
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
-from django.db.models import Case, IntegerField, Q, When
+from django.db.models import Case, Count, IntegerField, Q, When
+from django.db.models.functions import TruncDate
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -351,6 +353,57 @@ class AnalyticsEventCreateView(APIView):
         return Response(AnalyticsEventSerializer(event).data, status=status.HTTP_201_CREATED)
 
 
+class AnalyticsSummaryView(APIView):
+    authentication_classes = (BotAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        days = min(_positive_int(request.query_params.get("days"), default=30) or 30, 180)
+        end_at = timezone.now()
+        start_at = end_at - timedelta(days=days - 1)
+        start_date = start_at.date()
+        queryset = AnalyticsEvent.objects.filter(created_at__gte=start_at, created_at__lte=end_at)
+
+        searches = queryset.filter(event_type="search").count()
+        no_results = queryset.filter(event_type="search_no_results").count()
+        impressions = queryset.filter(event_type="view_item_list").count()
+        clicks = queryset.filter(event_type="select_item").count()
+        users = (
+            queryset.exclude(telegram_user_id__isnull=True)
+            .values("telegram_user_id")
+            .distinct()
+            .count()
+        )
+
+        return Response(
+            {
+                "period": {
+                    "days": days,
+                    "from": start_at.isoformat(),
+                    "to": end_at.isoformat(),
+                },
+                "kpis": {
+                    "users": users,
+                    "searches": searches,
+                    "no_results": no_results,
+                    "impressions": impressions,
+                    "clicks": clicks,
+                    "ctr": _rate(clicks, impressions),
+                    "no_result_rate": _rate(no_results, searches),
+                    "active_consents": _active_consent_count(),
+                },
+                "time_series": _analytics_time_series(queryset, start_date=start_date, days=days),
+                "event_mix": _event_mix(queryset),
+                "top_queries": _top_queries(queryset),
+                "top_products": _top_products(queryset),
+                "languages": _dimension_counts(queryset, "language_code"),
+                "input_types": _dimension_counts(queryset, "input_type"),
+                "consents": _consent_summary(),
+                "generated_at": end_at.isoformat(),
+            }
+        )
+
+
 class ProductClickRedirectView(APIView):
     authentication_classes = ()
     permission_classes = ()
@@ -439,6 +492,132 @@ def _normalize_language_code(language_code: str) -> str:
 def _consent_version(value: str | None) -> str:
     version = str(value or "").strip()
     return version or settings.USER_CONSENT_VERSION
+
+
+def _active_consent_count() -> int:
+    return UserConsent.objects.filter(
+        consent_version=settings.USER_CONSENT_VERSION,
+        personal_data_accepted_at__isnull=False,
+        sponsored_ads_accepted_at__isnull=False,
+        revoked_at__isnull=True,
+    ).count()
+
+
+def _consent_summary() -> dict[str, int]:
+    return {
+        "active": _active_consent_count(),
+        "declined": UserConsent.objects.filter(declined_at__isnull=False).count(),
+        "revoked": UserConsent.objects.filter(revoked_at__isnull=False).count(),
+        "total": UserConsent.objects.count(),
+    }
+
+
+def _analytics_time_series(queryset, *, start_date, days: int) -> list[dict[str, int | str]]:
+    rows = (
+        queryset.annotate(day=TruncDate("created_at"))
+        .values("day", "event_type")
+        .annotate(count=Count("id"))
+        .order_by("day")
+    )
+    counts = {(row["day"], row["event_type"]): row["count"] for row in rows}
+    user_rows = (
+        queryset.exclude(telegram_user_id__isnull=True)
+        .annotate(day=TruncDate("created_at"))
+        .values("day")
+        .annotate(users=Count("telegram_user_id", distinct=True))
+        .order_by("day")
+    )
+    users_by_day = {row["day"]: row["users"] for row in user_rows}
+
+    return [
+        {
+            "date": (start_date + timedelta(days=offset)).isoformat(),
+            "users": users_by_day.get(start_date + timedelta(days=offset), 0),
+            "searches": counts.get((start_date + timedelta(days=offset), "search"), 0),
+            "no_results": counts.get(
+                (start_date + timedelta(days=offset), "search_no_results"), 0
+            ),
+            "impressions": counts.get(
+                (start_date + timedelta(days=offset), "view_item_list"), 0
+            ),
+            "clicks": counts.get((start_date + timedelta(days=offset), "select_item"), 0),
+        }
+        for offset in range(days)
+    ]
+
+
+def _event_mix(queryset) -> list[dict[str, int | str]]:
+    return [
+        {"name": row["event_type"], "value": row["count"]}
+        for row in queryset.values("event_type").annotate(count=Count("id")).order_by("-count")
+    ]
+
+
+def _top_queries(queryset) -> list[dict[str, int | str | float]]:
+    rows = (
+        queryset.filter(event_type__in={"search", "search_no_results"})
+        .exclude(query="")
+        .values("query")
+        .annotate(
+            searches=Count("id"),
+            no_results=Count("id", filter=Q(event_type="search_no_results")),
+        )
+        .order_by("-searches", "query")[:12]
+    )
+    return [
+        {
+            "query": row["query"],
+            "searches": row["searches"],
+            "no_results": row["no_results"],
+            "no_result_rate": _rate(row["no_results"], row["searches"]),
+        }
+        for row in rows
+    ]
+
+
+def _top_products(queryset) -> list[dict[str, int | str | float]]:
+    rows = (
+        queryset.filter(product__isnull=False, event_type__in={"view_item_list", "select_item"})
+        .values(
+            "product_id",
+            "product__title",
+            "product__canonical_url",
+            "product__cover_image_url",
+        )
+        .annotate(
+            impressions=Count("id", filter=Q(event_type="view_item_list")),
+            clicks=Count("id", filter=Q(event_type="select_item")),
+        )
+        .order_by("-clicks", "-impressions", "product__title")[:12]
+    )
+    return [
+        {
+            "id": row["product_id"],
+            "title": row["product__title"] or "",
+            "url": row["product__canonical_url"] or "",
+            "cover_image_url": row["product__cover_image_url"] or "",
+            "impressions": row["impressions"],
+            "clicks": row["clicks"],
+            "ctr": _rate(row["clicks"], row["impressions"]),
+        }
+        for row in rows
+    ]
+
+
+def _dimension_counts(queryset, field_name: str) -> list[dict[str, int | str]]:
+    return [
+        {"name": row[field_name] or "unknown", "value": row["count"]}
+        for row in queryset.exclude(**{field_name: ""})
+        .values(field_name)
+        .annotate(count=Count("id"))
+        .order_by("-count", field_name)
+    ]
+
+
+def _rate(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round((numerator / denominator) * 100, 2)
 
 
 def _context_analytics_event(value: str | None) -> AnalyticsEvent | None:
