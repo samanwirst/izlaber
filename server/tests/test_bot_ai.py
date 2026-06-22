@@ -4,6 +4,7 @@ from bot.config import BotConfig, Config
 from bot.handlers.admin import _format_usd, _is_openai_status_admin
 from bot.handlers.common import (
     _expansion_filters,
+    _local_results_need_ai,
     _merge_unique_products,
     _search_expansion_allowed,
     _strip_bot_username,
@@ -117,6 +118,50 @@ def test_search_expansion_helpers():
     assert [item.id for item in _merge_unique_products([product(1, "A")], [product(1, "A")])] == [
         1
     ]
+
+
+def test_ai_fallback_skips_good_local_results():
+    products = [
+        product(1, "Стильный женский свитер с V-образным вырезом"),
+        product(2, "Женский свитер с v вырезом"),
+        product(3, "Пуловер с V образным вырезом"),
+        product(4, "Джемпер с v-neck"),
+        product(5, "Базовый свитер с V-образной горловиной"),
+    ]
+
+    assert not _local_results_need_ai("свитер v вырез", products, min_results=5)
+
+
+def test_ai_fallback_detects_bad_local_results():
+    products = [
+        product(1, "Свитер с круглой горловиной"),
+        product(2, "Кофта без выреза"),
+        product(3, "Кардиган на пуговицах"),
+        product(4, "Футболка базовая"),
+        product(5, "Женский топ"),
+    ]
+
+    assert _local_results_need_ai("свитер v вырез", products, min_results=5)
+
+
+def test_ai_fallback_understands_compression_wear():
+    good_products = [
+        product(1, "Компрессионный рашгард спортивный"),
+        product(2, "Компрессионная футболка для фитнеса"),
+        product(3, "Компрессионные тайтсы спортивные"),
+        product(4, "Компрессионные шорты мужские"),
+        product(5, "Компрессионный рукав для спорта"),
+    ]
+    bad_products = [
+        product(1, "Присадка для увеличения компрессии двигателя"),
+        product(2, "Компрессор автомобильный"),
+        product(3, "Моторное масло"),
+        product(4, "Насос для шин"),
+        product(5, "Автохимия"),
+    ]
+
+    assert not _local_results_need_ai("компрессионка", good_products, min_results=5)
+    assert _local_results_need_ai("компрессионка", bad_products, min_results=5)
 
 
 def test_quota_error_detection_does_not_confuse_rate_limit():

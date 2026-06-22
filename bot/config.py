@@ -28,6 +28,7 @@ class Config:
     openai_search_expand_max_queries: int = 3
     openai_search_expand_query_limit: int = 15
     openai_rerank_max_products: int = 80
+    openai_rerank_fallback_only: bool = True
     openai_status_notify_user_id: int | None = 976835256
     openai_admin_api_key: str = ""
     openai_monthly_budget_usd: float | None = None
@@ -66,6 +67,8 @@ def load_config() -> Config:
         openai_search_expand_max_queries=int(getenv("OPENAI_SEARCH_EXPAND_MAX_QUERIES", "3")),
         openai_search_expand_query_limit=int(getenv("OPENAI_SEARCH_EXPAND_QUERY_LIMIT", "15")),
         openai_rerank_max_products=int(getenv("OPENAI_RERANK_MAX_PRODUCTS", "80")),
+        openai_rerank_fallback_only=getenv("OPENAI_RERANK_FALLBACK_ONLY", "true").lower()
+        in {"1", "true", "yes"},
         openai_status_notify_user_id=_optional_int(
             getenv("OPENAI_STATUS_NOTIFY_USER_ID"),
             default=976835256,

@@ -73,8 +73,14 @@ class CrawlRunSeenProduct(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["crawl_run", "source_product_id"]),
-            models.Index(fields=["source_product_id"]),
+            models.Index(
+                fields=["crawl_run", "source_product_id"],
+                name="crawling_cr_crawl_r_d92e5c_idx",
+            ),
+            models.Index(
+                fields=["source_product_id"],
+                name="crawling_cr_source__5ba149_idx",
+            ),
         ]
         constraints = [
             models.UniqueConstraint(

@@ -14,7 +14,7 @@ from apps.catalog.models import (
     ProductSnapshot,
     Seller,
 )
-from apps.catalog.search import replace_product_search_terms
+from apps.catalog.search import product_search_text, replace_product_search_terms
 from apps.crawling.models import CrawlRun, CrawlRunSeenProduct
 
 
@@ -124,13 +124,17 @@ def upsert_products(
             product.last_seen_at = now
             product.is_active = True
             product.unavailable_since = None
+            update_fields = [
+                "last_seen_at",
+                "is_active",
+                "unavailable_since",
+                "updated_at",
+            ]
+            if product.search_text != defaults["search_text"]:
+                product.search_text = defaults["search_text"]
+                update_fields.append("search_text")
             product.save(
-                update_fields=[
-                    "last_seen_at",
-                    "is_active",
-                    "unavailable_since",
-                    "updated_at",
-                ]
+                update_fields=update_fields
             )
             stats["unchanged"] += 1
             if was_inactive:
@@ -290,6 +294,12 @@ def _product_defaults(
         "image_urls": payload.get("image_urls") or [],
         "specs": payload.get("specs") or {},
         "raw_data": payload.get("raw_data") or {},
+        "search_text": product_search_text(
+            title=payload["title"],
+            brand=payload.get("brand"),
+            category_path_text=payload.get("category_path_text"),
+            source_product_id=payload["source_product_id"],
+        ),
         "content_hash": payload["content_hash"],
         "first_seen_at": now,
         "last_seen_at": now,

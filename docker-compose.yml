@@ -9,10 +9,10 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_URL: ${DATABASE_URL:-postgres://izlaber:izlaber@postgres:5432/izlaber}
       SERVER_API_BASE_URL: http://server:8000/api
     ports:
-      - "8000:8000"
+      - "${SERVER_PORT:-8001}:8000"
     volumes:
       - ./server:/app/server
     healthcheck:
@@ -21,12 +21,15 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/schema/', timeout=2).read()",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz/', timeout=2).read()",
         ]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     command: >
       sh -c "python manage.py migrate &&
@@ -68,14 +71,12 @@ services:
 
   postgres:
     image: postgres:16
-    profiles:
-      - postgres
     environment:
       POSTGRES_USER: izlaber
       POSTGRES_PASSWORD: izlaber
       POSTGRES_DB: izlaber
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-15432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

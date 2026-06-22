@@ -1,5 +1,10 @@
 from apps.catalog.models import Product, ProductSearchTerm, ProductSnapshot
-from apps.catalog.search import product_search_terms, query_terms, search_product_ids
+from apps.catalog.search import (
+    product_search_terms,
+    query_price_filters,
+    query_terms,
+    search_product_ids,
+)
 from apps.crawling.models import CrawlRun
 from apps.crawling.services import (
     finish_crawl_run,
@@ -36,6 +41,7 @@ def test_product_upsert_idempotency(db):
     product = Product.objects.get()
     assert product.canonical_url == "https://uzum.uz/ru/product/test-p1"
     assert product.cover_image_url == "https://images.uzum.uz/test/t_product_540_high.jpg"
+    assert product.search_text
 
     stats = upsert_products(marketplace_code="uzum", products=[product_payload()])
     assert stats.unchanged == 1
@@ -79,6 +85,12 @@ def test_search_normalizes_v_neck_sweater_query():
     )
     assert "sweater" not in t_shirt_terms
     assert t_shirt_terms["vneck"] == 10
+
+
+def test_search_query_skips_price_noise_and_extracts_price_filter():
+    assert query_terms("кроссовки белые до 300 тысяч") == ["кроссовки", "белые"]
+    assert query_price_filters("кроссовки белые до 300 тысяч") == (None, 300000)
+    assert query_terms("компрессионка") == ["compressionwear"]
 
 
 def test_product_upsert_uses_explicit_cover_image_url(db):
@@ -194,3 +206,23 @@ def test_api_key_auth_rejects_missing_or_wrong_key(settings, db):
 
     response = client.get("/api/v1/products/", HTTP_X_INTERNAL_API_KEY="bot-key")
     assert response.status_code == 200
+
+
+def test_product_list_uses_lightweight_payload(settings, db):
+    settings.BOT_API_KEY = "bot-key"
+    upsert_products(marketplace_code="uzum", products=[product_payload()])
+
+    client = APIClient()
+    response = client.get(
+        "/api/v1/products/",
+        {"q": "test", "marketplace": "uzum", "limit": 5},
+        HTTP_X_INTERNAL_API_KEY="bot-key",
+    )
+
+    assert response.status_code == 200
+    row = response.data["results"][0]
+    assert row["title"] == "Test product"
+    assert row["cover_image_url"] == "https://images.uzum.uz/test/t_product_540_high.jpg"
+    assert "raw_data" not in row
+    assert "specs" not in row
+    assert "image_urls" not in row

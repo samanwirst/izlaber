@@ -5,6 +5,8 @@ from typing import Any
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
+from bot.locales import format_message, product_label, product_noun, review_text
+
 
 class ServerAPIError(RuntimeError):
     pass
@@ -83,20 +85,31 @@ class ServerAPIClient:
             raise ServerAPIError(f"Cannot connect to server API: {exc}") from exc
 
 
-def render_products(products: list[ProductDTO], query: str) -> str:
+def render_products(
+    products: list[ProductDTO],
+    query: str,
+    language_code: str | None = None,
+) -> str:
     if not products:
-        return f"В каталоге пока нет товаров по запросу <b>{escape(query)}</b>."
+        return format_message("guest_no_results", language_code, query=query)
 
-    noun = "товар" if len(products) == 1 else "товара"
-    lines = [f"Нашел {len(products)} {noun} по запросу <b>{escape(query)}</b>:"]
+    lines = [
+        format_message(
+            "guest_results_header",
+            language_code,
+            query=query,
+            count=len(products),
+            noun=product_noun(len(products), language_code),
+        )
+    ]
     for index, product in enumerate(products, start=1):
         details = []
         if product.current_price:
-            details.append(_format_price(product.current_price, product.currency))
+            details.append(_format_price(product.current_price, product.currency, language_code))
         if product.rating:
-            details.append(f"рейтинг {product.rating}")
+            details.append(f"{product_label('rating', language_code)} {product.rating}")
         if product.reviews_count is not None:
-            details.append(f"{product.reviews_count} отзывов")
+            details.append(review_text(product.reviews_count, language_code))
         suffix = f" - {escape(', '.join(details))}" if details else ""
         lines.append(
             f'{index}. <a href="{escape(product.canonical_url)}">'
@@ -105,24 +118,26 @@ def render_products(products: list[ProductDTO], query: str) -> str:
     return "\n\n".join(lines)
 
 
-def render_product_card(product: ProductDTO, index: int) -> str:
+def render_product_card(product: ProductDTO, index: int, language_code: str | None = None) -> str:
     lines = [
         f'<b>{index}. <a href="{escape(product.canonical_url)}">{escape(product.title)}</a></b>'
     ]
     if product.current_price:
-        price = escape(_format_price(product.current_price, product.currency))
-        lines.append(f"Цена: <b>{price}</b>")
+        price = escape(_format_price(product.current_price, product.currency, language_code))
+        lines.append(f"{product_label('price', language_code)}: <b>{price}</b>")
     if product.old_price:
-        lines.append(f"Старая цена: {escape(_format_price(product.old_price, product.currency))}")
+        old_price = escape(_format_price(product.old_price, product.currency, language_code))
+        lines.append(f"{product_label('old_price', language_code)}: {old_price}")
     details = []
     if product.rating:
-        details.append(f"рейтинг {product.rating}")
+        details.append(f"{product_label('rating', language_code)} {product.rating}")
     if product.reviews_count is not None:
-        details.append(f"{product.reviews_count} отзывов")
+        details.append(review_text(product.reviews_count, language_code))
     if details:
         lines.append(escape(", ".join(details)))
     if product.category_path_text:
-        lines.append(f"Категория: {escape(product.category_path_text)}")
+        category = escape(product.category_path_text)
+        lines.append(f"{product_label('category', language_code)}: {category}")
     return "\n".join(lines)
 
 
@@ -142,8 +157,8 @@ def _parse_product(row: dict[str, Any]) -> ProductDTO:
     )
 
 
-def _format_price(value: str, currency: str) -> str:
+def _format_price(value: str, currency: str, language_code: str | None = None) -> str:
     amount = Decimal(str(value))
     normalized = int(amount) if amount == amount.to_integral_value() else amount
-    suffix = "сум" if currency == "UZS" else currency
+    suffix = product_label("currency_uzs", language_code) if currency == "UZS" else currency
     return f"{normalized:,}".replace(",", " ") + f" {suffix}"

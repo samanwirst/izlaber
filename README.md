@@ -29,7 +29,14 @@ PYTHONPATH=server python server/manage.py createsuperuser
 PYTHONPATH=server python server/manage.py runserver 0.0.0.0:8000
 ```
 
-SQLite is used by default. For PostgreSQL set `DATABASE_URL`.
+SQLite is used by default for direct local Python runs. For production-sized Uzum data,
+use PostgreSQL:
+
+```bash
+export DATABASE_URL=postgres://izlaber:izlaber@127.0.0.1:15432/izlaber
+PYTHONPATH=server python server/manage.py migrate
+PYTHONPATH=server python server/manage.py rebuild_product_search_index --marketplace uzum --skip-token-index
+```
 
 ## Run Bot
 
@@ -45,11 +52,20 @@ python bot/main.py
 cd bot && ../.venv/bin/python main.py
 ```
 
+Bot profile and command descriptions are localized for Uzbek, Russian, and English.
+Uzbek is the default fallback language. Apply or refresh Telegram profile text after
+copy changes:
+
+```bash
+python -m bot.setup_profile
+```
+
 Bot search flow:
 
 - User sends a product name.
+- Bot detects the user's Telegram app language and answers in Uzbek, Russian, or English.
 - Bot sends 5 Uzum cards with cover, price, rating, and link.
-- The `Еще` keyboard button sends the next 5 cards for the latest query of that exact chat/user.
+- The localized `Yana` / `Еще` / `More` keyboard button sends the next 5 cards for the latest query of that exact chat/user.
 - Any new product text resets that user's search offset, so old searches are not mixed.
 
 Guest Mode:
@@ -58,7 +74,9 @@ Guest Mode:
 - Guest requests return one compact top-5 Uzum result via `answerGuestQuery`; they do not reuse or mutate the private-chat `Еще` pagination state.
 - Set `BOT_GUEST_SEARCH_ENABLED=false` to disable this handler locally.
 
-Product search uses a token index. Rebuild it after large manual DB imports:
+Product search uses PostgreSQL FTS/trigram indexes when `DATABASE_URL` points to
+PostgreSQL, and falls back to the token index on SQLite. Rebuild the local search
+data after large manual DB imports:
 
 ```bash
 ./scripts/rebuild_product_search_index.sh --marketplace uzum
@@ -67,7 +85,8 @@ Product search uses a token index. Rebuild it after large manual DB imports:
 Optional AI rerank:
 
 - Set `OPENAI_API_KEY` in `.env` to enable neural reranking.
-- The bot first fetches `OPENAI_RERANK_CANDIDATE_LIMIT` indexed candidates, then asks the configured OpenAI model to reorder only those candidates.
+- By default `OPENAI_RERANK_FALLBACK_ONLY=true`: the bot first returns fast PostgreSQL results and calls OpenAI only when the local top results look weak.
+- If fallback-only mode is disabled, the bot fetches `OPENAI_RERANK_CANDIDATE_LIMIT` indexed candidates, then asks the configured OpenAI model to reorder only those candidates.
 - If the indexed candidates look irrelevant or too sparse, the model can generate up to `OPENAI_SEARCH_EXPAND_MAX_QUERIES` extra search queries with optional price filters, then the bot fetches more candidates and reranks the merged pool.
 - If OpenAI returns quota/billing exhaustion, the bot notifies `OPENAI_STATUS_NOTIFY_USER_ID`, switches to local-only search, probes OpenAI every `OPENAI_BALANCE_PROBE_INTERVAL` seconds, and enables AI automatically when the API is available again.
 - `/balance` is available only to `OPENAI_STATUS_NOTIFY_USER_ID`. It shows live AI availability; with `OPENAI_ADMIN_API_KEY` it also shows official Costs API spend, and with `OPENAI_MONTHLY_BUDGET_USD` it estimates remaining configured budget.
@@ -143,10 +162,25 @@ Equivalent raw Docker command:
 docker compose up --build server bot
 ```
 
-The server uses the existing `./server/db.sqlite3` through a bind mount, so the
-current parsed catalog is available inside Docker. The SQLite database, parser
+Docker starts PostgreSQL by default and points the API at
+`postgres://izlaber:izlaber@postgres:5432/izlaber`. The SQLite database, parser
 state, virtualenvs, and caches are excluded from Docker build context by
 `.dockerignore`, so image builds do not upload local data.
+The API is exposed on host port `8001` by default; override with `SERVER_PORT`.
+PostgreSQL is exposed on host port `15432` by default; override with `POSTGRES_PORT`.
+
+One-time migration from the current SQLite catalog to Docker PostgreSQL:
+
+```bash
+docker compose up -d postgres
+docker compose run --rm server python manage.py migrate
+docker compose run --rm server python manage.py copy_sqlite_to_postgres --truncate
+docker compose run --rm server python manage.py rebuild_product_search_index --marketplace uzum --skip-token-index
+```
+
+`copy_sqlite_to_postgres` skips `catalog_productsearchterm` by default because the
+PostgreSQL search path uses `Product.search_text` with GIN indexes, and the token
+index is only needed for the SQLite fallback.
 
 Useful Docker commands:
 
@@ -162,12 +196,6 @@ Parser:
 ```bash
 docker compose --profile parser run --rm parser python -m parsers.uzum_market.cli crawl --mode test --limit 100
 docker compose --profile parser run --rm parser python -m parsers.uzum_market.cli crawl --mode full --resume
-```
-
-PostgreSQL profile:
-
-```bash
-DATABASE_URL=postgres://izlaber:izlaber@postgres:5432/izlaber docker compose --profile postgres up --build
 ```
 
 ## Tests

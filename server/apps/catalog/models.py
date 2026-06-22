@@ -107,6 +107,7 @@ class Product(TimestampedModel):
     image_urls = models.JSONField(default=list, blank=True)
     specs = models.JSONField(default=dict, blank=True)
     raw_data = models.JSONField(default=dict, blank=True)
+    search_text = models.TextField(blank=True, default="")
     content_hash = models.CharField(max_length=64)
     first_seen_at = models.DateTimeField(default=timezone.now)
     last_seen_at = models.DateTimeField(default=timezone.now)
@@ -128,6 +129,10 @@ class Product(TimestampedModel):
             models.Index(fields=["title"]),
             models.Index(fields=["updated_at"]),
             models.Index(fields=["last_seen_at"]),
+            models.Index(
+                fields=["marketplace", "is_active", "current_price"],
+                name="catalog_pro_mkt_act_price_idx",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -169,8 +174,14 @@ class ProductSearchTerm(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["term", "marketplace_code", "product_is_active", "weight"]),
-            models.Index(fields=["product", "term"]),
+            models.Index(
+                fields=["term", "marketplace_code", "product_is_active", "weight"],
+                name="catalog_pro_term_7035d6_idx",
+            ),
+            models.Index(
+                fields=["product", "term"],
+                name="catalog_pro_product_dd6b80_idx",
+            ),
         ]
         constraints = [
             models.UniqueConstraint(

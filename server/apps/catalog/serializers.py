@@ -76,6 +76,28 @@ class ProductSerializer(serializers.ModelSerializer):
         )
 
 
+class ProductCardSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = (
+            "id",
+            "source_product_id",
+            "canonical_url",
+            "title",
+            "brand",
+            "category_path_text",
+            "rating",
+            "reviews_count",
+            "current_price",
+            "old_price",
+            "currency",
+            "availability",
+            "cover_image_url",
+            "last_seen_at",
+            "is_active",
+        )
+
+
 class ProductSnapshotSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductSnapshot
