@@ -63,6 +63,7 @@ python -m bot.setup_profile
 Bot search flow:
 
 - User sends a product name.
+- User can also send a product photo; the bot uses an AI Lens pipeline to find visually similar product cards.
 - Bot detects the user's Telegram app language and answers in Uzbek, Russian, or English.
 - Bot sends 5 Uzum cards with cover, price, rating, and link.
 - The localized `Yana` / `Еще` / `More` keyboard button sends the next 5 cards for the latest query of that exact chat/user.
@@ -86,6 +87,15 @@ Optional AI rerank:
 
 - Set `OPENAI_API_KEY` in `.env` to enable neural reranking.
 - By default `OPENAI_RERANK_FALLBACK_ONLY=true`: the bot first returns fast PostgreSQL results and calls OpenAI only when the local top results look weak.
+- Photo search uses an AI Lens pipeline: the bot understands the user photo, fetches a small candidate set from PostgreSQL, then visually reranks candidate cover images. This avoids returning every generic mug or cream.
+- Voice messages are transcribed to text, then passed through the same product search pipeline.
+- `OPENAI_PHOTO_VISUAL_RERANK_LIMIT` controls how many candidate covers are sent to the model. Keep it around `12-16` for a good cost/quality balance.
+- `OPENAI_VOICE_MODEL=gpt-4o-mini-transcribe` is the cheapest practical option for Telegram voice notes in the current stack.
+- `PHOTO_VISUAL_MATCH_ENABLED=true` is still useful as a cheap exact-cover fallback when AI is unavailable.
+- Build or refresh cover fingerprints after migration or large imports with `./scripts/rebuild_product_visual_index.sh --marketplace uzum`. Exact cover matching can only match products whose covers are indexed.
+- For a targeted repair/check use `./scripts/rebuild_product_visual_index.sh --marketplace uzum --source-product-id 2797446`.
+- `OPENAI_PHOTO_TEXT_FALLBACK_ENABLED=false` by default, so weak text-only photo matches are not sent when visual rerank finds no close match.
+- Tune exact photo matching with `PHOTO_VISUAL_MATCH_MAX_DISTANCE`; lower values are stricter.
 - If fallback-only mode is disabled, the bot fetches `OPENAI_RERANK_CANDIDATE_LIMIT` indexed candidates, then asks the configured OpenAI model to reorder only those candidates.
 - If the indexed candidates look irrelevant or too sparse, the model can generate up to `OPENAI_SEARCH_EXPAND_MAX_QUERIES` extra search queries with optional price filters, then the bot fetches more candidates and reranks the merged pool.
 - If OpenAI returns quota/billing exhaustion, the bot notifies `OPENAI_STATUS_NOTIFY_USER_ID`, switches to local-only search, probes OpenAI every `OPENAI_BALANCE_PROBE_INTERVAL` seconds, and enables AI automatically when the API is available again.

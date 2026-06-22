@@ -29,6 +29,25 @@ class Config:
     openai_search_expand_query_limit: int = 15
     openai_rerank_max_products: int = 80
     openai_rerank_fallback_only: bool = True
+    openai_photo_search_enabled: bool = True
+    openai_photo_model: str = "gpt-5.4-nano"
+    openai_photo_timeout: float = 12.0
+    openai_photo_max_output_tokens: int = 500
+    openai_photo_detail: str = "high"
+    openai_photo_max_pixels: int = 1_048_576
+    openai_photo_max_download_bytes: int = 2_000_000
+    openai_photo_candidate_limit: int = 60
+    openai_photo_visual_rerank_enabled: bool = True
+    openai_photo_visual_rerank_limit: int = 16
+    openai_photo_visual_rerank_min_score: int = 55
+    photo_visual_match_enabled: bool = True
+    photo_visual_match_max_distance: int = 10
+    openai_photo_text_fallback_enabled: bool = False
+    openai_voice_search_enabled: bool = True
+    openai_voice_model: str = "gpt-4o-mini-transcribe"
+    openai_voice_timeout: float = 20.0
+    openai_voice_max_download_bytes: int = 8_000_000
+    openai_voice_max_duration_seconds: int = 180
     openai_status_notify_user_id: int | None = 976835256
     openai_admin_api_key: str = ""
     openai_monthly_budget_usd: float | None = None
@@ -69,6 +88,47 @@ def load_config() -> Config:
         openai_rerank_max_products=int(getenv("OPENAI_RERANK_MAX_PRODUCTS", "80")),
         openai_rerank_fallback_only=getenv("OPENAI_RERANK_FALLBACK_ONLY", "true").lower()
         in {"1", "true", "yes"},
+        openai_photo_search_enabled=getenv("OPENAI_PHOTO_SEARCH_ENABLED", "true").lower()
+        in {"1", "true", "yes"},
+        openai_photo_model=getenv(
+            "OPENAI_PHOTO_MODEL",
+            getenv("OPENAI_RERANK_MODEL", "gpt-5.4-nano"),
+        ),
+        openai_photo_timeout=float(getenv("OPENAI_PHOTO_TIMEOUT", "12")),
+        openai_photo_max_output_tokens=int(getenv("OPENAI_PHOTO_MAX_OUTPUT_TOKENS", "500")),
+        openai_photo_detail=_photo_detail(getenv("OPENAI_PHOTO_DETAIL", "high")),
+        openai_photo_max_pixels=int(getenv("OPENAI_PHOTO_MAX_PIXELS", "1048576")),
+        openai_photo_max_download_bytes=int(getenv("OPENAI_PHOTO_MAX_DOWNLOAD_BYTES", "2000000")),
+        openai_photo_candidate_limit=int(getenv("OPENAI_PHOTO_CANDIDATE_LIMIT", "60")),
+        openai_photo_visual_rerank_enabled=getenv(
+            "OPENAI_PHOTO_VISUAL_RERANK_ENABLED",
+            "true",
+        ).lower()
+        in {"1", "true", "yes"},
+        openai_photo_visual_rerank_limit=int(
+            getenv("OPENAI_PHOTO_VISUAL_RERANK_LIMIT", "16")
+        ),
+        openai_photo_visual_rerank_min_score=int(
+            getenv("OPENAI_PHOTO_VISUAL_RERANK_MIN_SCORE", "55")
+        ),
+        photo_visual_match_enabled=getenv("PHOTO_VISUAL_MATCH_ENABLED", "true").lower()
+        in {"1", "true", "yes"},
+        photo_visual_match_max_distance=int(getenv("PHOTO_VISUAL_MATCH_MAX_DISTANCE", "10")),
+        openai_photo_text_fallback_enabled=getenv(
+            "OPENAI_PHOTO_TEXT_FALLBACK_ENABLED",
+            "false",
+        ).lower()
+        in {"1", "true", "yes"},
+        openai_voice_search_enabled=getenv("OPENAI_VOICE_SEARCH_ENABLED", "true").lower()
+        in {"1", "true", "yes"},
+        openai_voice_model=getenv("OPENAI_VOICE_MODEL", "gpt-4o-mini-transcribe"),
+        openai_voice_timeout=float(getenv("OPENAI_VOICE_TIMEOUT", "20")),
+        openai_voice_max_download_bytes=int(
+            getenv("OPENAI_VOICE_MAX_DOWNLOAD_BYTES", "8000000")
+        ),
+        openai_voice_max_duration_seconds=int(
+            getenv("OPENAI_VOICE_MAX_DURATION_SECONDS", "180")
+        ),
         openai_status_notify_user_id=_optional_int(
             getenv("OPENAI_STATUS_NOTIFY_USER_ID"),
             default=976835256,
@@ -102,3 +162,10 @@ def _optional_float(value: str | None, *, default: float | None) -> float | None
     if not value:
         return None
     return float(value)
+
+
+def _photo_detail(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized in {"low", "high", "auto"}:
+        return normalized
+    return "low"

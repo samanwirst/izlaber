@@ -232,8 +232,22 @@ def search_product_ids(
             return rows
 
         # Trigram catches morphology and typos that exact token FTS misses.
-        return _search_product_ids_postgres_trigram(
+        rows = _search_product_ids_postgres_trigram(
             query=query,
+            marketplace_code=marketplace_code,
+            active_only=active_only,
+            limit=limit,
+            min_price=min_price,
+            max_price=max_price,
+        )
+        if rows:
+            return rows
+
+        # Human queries often mix product type with optional visual details. If the
+        # full phrase has no exact hit, relax the weakest combinations before AI
+        # expansion so "белая кружка с пейзажем" can still find white mugs.
+        return _search_product_ids_postgres_relaxed(
+            terms=terms,
             marketplace_code=marketplace_code,
             active_only=active_only,
             limit=limit,
@@ -500,6 +514,59 @@ def _search_product_ids_postgres_trigram(
         min_price=min_price,
         max_price=max_price,
     )
+
+
+def _search_product_ids_postgres_relaxed(
+    *,
+    terms: list[str],
+    marketplace_code: str | None,
+    active_only: bool,
+    limit: int,
+    min_price: Decimal | None,
+    max_price: Decimal | None,
+) -> list[int]:
+    if len(terms) <= 1:
+        return []
+
+    min_term_count = 1 if len(terms) <= 3 else 2
+    seen_queries: set[tuple[str, ...]] = set()
+    for term_count in range(len(terms) - 1, min_term_count - 1, -1):
+        for relaxed_terms in _relaxed_term_combinations(terms, term_count):
+            key = tuple(relaxed_terms)
+            if key in seen_queries:
+                continue
+            seen_queries.add(key)
+            rows = _search_product_ids_postgres(
+                terms=relaxed_terms,
+                query=" ".join(relaxed_terms),
+                marketplace_code=marketplace_code,
+                active_only=active_only,
+                limit=limit,
+                min_price=min_price,
+                max_price=max_price,
+            )
+            if rows:
+                return rows
+    return []
+
+
+def _relaxed_term_combinations(terms: list[str], term_count: int) -> Iterable[list[str]]:
+    if term_count >= len(terms):
+        yield terms
+        return
+    if term_count <= 0:
+        return
+
+    # Drop later descriptive words first. In real user phrases the first words
+    # usually contain the product type, while later words often describe color,
+    # pattern, or noisy details that may not exist in the card title.
+    if term_count == len(terms) - 1:
+        for drop_index in range(len(terms) - 1, -1, -1):
+            yield terms[:drop_index] + terms[drop_index + 1 :]
+        return
+
+    for start_index in range(0, len(terms) - term_count + 1):
+        yield terms[start_index : start_index + term_count]
 
 
 def _fetch_postgres_product_ids(

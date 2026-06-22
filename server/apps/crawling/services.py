@@ -142,9 +142,12 @@ def upsert_products(
                 stats["reactivated"] += 1
             continue
 
+        cover_changed = product.cover_image_url != defaults["cover_image_url"]
         for field, value in defaults.items():
             if field != "first_seen_at":
                 setattr(product, field, value)
+        if cover_changed:
+            _reset_product_visual_fingerprint(product)
         product.last_seen_at = now
         product.is_active = True
         product.unavailable_since = None
@@ -320,6 +323,13 @@ def _create_snapshot(product: Product, crawl_run: CrawlRun | None) -> ProductSna
         content_hash=product.content_hash,
         raw_data=product.raw_data,
     )
+
+
+def _reset_product_visual_fingerprint(product: Product) -> None:
+    product.cover_image_ahash = None
+    product.cover_image_dhash = None
+    product.cover_image_fingerprint_url = None
+    product.cover_image_fingerprint_at = None
 
 
 def _decimal_or_none(value) -> Decimal | None:

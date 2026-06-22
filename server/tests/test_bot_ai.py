@@ -1,4 +1,5 @@
 import pytest
+from aiogram.types import PhotoSize
 
 from bot.config import BotConfig, Config
 from bot.handlers.admin import _format_usd, _is_openai_status_admin
@@ -6,9 +7,15 @@ from bot.handlers.common import (
     _expansion_filters,
     _local_results_need_ai,
     _merge_unique_products,
+    _photo_candidate_query_limit,
+    _photo_search_queries,
     _search_expansion_allowed,
+    _select_photo_for_vision,
+    _source_product_ids_from_text,
     _strip_bot_username,
+    _voice_search_available,
 )
+from bot.services.ai_audio import _language_name, _transcription_prompt
 from bot.services.ai_reranker import (
     OPENAI_PROBE_MAX_OUTPUT_TOKENS,
     SearchExpansion,
@@ -18,7 +25,8 @@ from bot.services.ai_reranker import (
     rerank_products,
 )
 from bot.services.ai_runtime import AIRuntimeState
-from bot.services.api_client import ProductDTO
+from bot.services.ai_vision import parse_photo_search_output
+from bot.services.api_client import ProductDTO, _response_rows
 from bot.services.openai_billing import OpenAICostSummary, _merge_cost_buckets
 from bot.services.search_state import SearchStateStore
 
@@ -37,6 +45,14 @@ def product(product_id: int, title: str) -> ProductDTO:
         reviews_count=None,
         category_path_text=None,
     )
+
+
+def test_api_client_response_rows_accepts_list_and_paginated_dict():
+    rows = [{"id": 1}]
+
+    assert _response_rows(rows) == rows
+    assert _response_rows({"results": rows}) == rows
+    assert _response_rows({"results": None}) == []
 
 
 @pytest.mark.asyncio
@@ -104,6 +120,126 @@ def test_ai_search_expansion_parser_sanitizes_queries_and_prices():
         SearchExpansion(query="овер сайз свитер", min_price=None, max_price=300000),
         SearchExpansion(query="oversize sweater", min_price=100000, max_price=500000),
     ]
+
+
+def test_photo_search_output_parser_sanitizes_queries():
+    parsed = parse_photo_search_output(
+        """
+        {
+          "query": "  белые кроссовки  ",
+          "alternative_queries": [
+            "white sneakers",
+            "белые кроссовки",
+            "",
+            "oq krossovka"
+          ],
+          "confidence": "HIGH",
+          "visible_product": "white low-top sneakers",
+          "object_type": "кроссовки",
+          "brand": "Nike",
+          "visible_text": "Air",
+          "key_features": ["white", "low top", "lace-up"]
+        }
+        """
+    )
+
+    assert parsed.query == "белые кроссовки"
+    assert parsed.alternative_queries == ["white sneakers", "oq krossovka"]
+    assert parsed.confidence == "high"
+    assert parsed.visible_product == "white low-top sneakers"
+    assert parsed.object_type == "кроссовки"
+    assert parsed.brand == "Nike"
+    assert parsed.visible_text == "Air"
+    assert parsed.key_features == ["white", "low top", "lace-up"]
+
+
+def test_photo_selection_prefers_largest_affordable_photo():
+    config = Config(
+        bot=BotConfig(token="test"),
+        openai_photo_max_pixels=500 * 500,
+        openai_photo_max_download_bytes=400_000,
+    )
+    photos = [
+        PhotoSize(file_id="small", file_unique_id="1", width=160, height=160, file_size=20_000),
+        PhotoSize(file_id="good", file_unique_id="2", width=480, height=480, file_size=90_000),
+        PhotoSize(file_id="large", file_unique_id="3", width=1280, height=1280, file_size=300_000),
+    ]
+
+    assert _select_photo_for_vision(photos, config).file_id == "good"
+
+
+def test_source_product_ids_from_uzum_caption():
+    text = (
+        "https://uzum.uz/ru/product/steklyannaya-kruzhka-s-kryshkoi-i-"
+        "trubochkoi-serdce-ruchka-450-ml-2797446"
+    )
+
+    assert _source_product_ids_from_text(text) == ["2797446"]
+
+
+def test_photo_search_queries_include_visible_text_and_brand():
+    parsed = parse_photo_search_output(
+        """
+        {
+          "query": "cerave увлажняющий крем",
+          "alternative_queries": ["церава крем", "moisturizing cream"],
+          "confidence": "high",
+          "visible_product": "white and blue cream jar",
+          "object_type": "крем",
+          "brand": "CeraVe",
+          "visible_text": "Moisturising Cream",
+          "key_features": ["белая банка", "синяя этикетка"]
+        }
+        """
+    )
+
+    assert _photo_search_queries(parsed) == [
+        "cerave увлажняющий крем",
+        "церава крем",
+        "moisturizing cream",
+        "CeraVe Moisturising Cream крем",
+    ]
+
+
+def test_photo_candidate_query_limit_splits_budget():
+    config = Config(bot=BotConfig(token="test"), openai_photo_candidate_limit=60)
+
+    assert _photo_candidate_query_limit(config, 1) == 40
+    assert _photo_candidate_query_limit(config, 4) == 20
+
+
+def test_voice_search_availability_requires_key_and_runtime():
+    config = Config(bot=BotConfig(token="test"), openai_api_key="key")
+
+    assert _voice_search_available(config) is True
+    assert _voice_search_available(Config(bot=BotConfig(token="test"), openai_api_key="")) is False
+    assert _voice_search_available(
+        Config(
+            bot=BotConfig(token="test"),
+            openai_api_key="key",
+            openai_voice_search_enabled=False,
+        )
+    ) is False
+
+
+def test_config_exposes_voice_defaults():
+    config = Config(bot=BotConfig(token="test"))
+
+    assert config.openai_voice_search_enabled is True
+    assert config.openai_voice_model == "gpt-4o-mini-transcribe"
+    assert config.openai_voice_timeout == 20.0
+    assert config.openai_voice_max_download_bytes == 8_000_000
+    assert config.openai_voice_max_duration_seconds == 180
+
+
+def test_voice_transcription_prompt_uses_language_names_not_codes():
+    assert _language_name("uz") == "Uzbek"
+    assert _language_name("ru-RU") == "Russian"
+    assert _language_name("en_US") == "English"
+    assert _language_name("de") == ""
+
+    assert "Uzbek" in _transcription_prompt("uz")
+    assert "language code" not in _transcription_prompt("uz").lower()
 
 
 def test_search_expansion_helpers():

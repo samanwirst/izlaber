@@ -62,8 +62,48 @@ class ServerAPIClient:
         if filters:
             params.update({key: str(value) for key, value in filters.items() if value is not None})
         data = await self._get("/v1/products/", params=params)
-        rows = data.get("results", data if isinstance(data, list) else [])
+        rows = _response_rows(data)
         return [_parse_product(row) for row in rows[:limit]]
+
+    async def visual_search_products(
+        self,
+        *,
+        ahash: str,
+        dhash: str,
+        max_distance: int,
+        limit: int = 5,
+    ) -> list[ProductDTO]:
+        data = await self._post(
+            "/v1/products/visual-search/",
+            payload={
+                "ahash": ahash,
+                "dhash": dhash,
+                "marketplace": "uzum",
+                "active_only": True,
+                "max_distance": max_distance,
+                "limit": limit,
+            },
+        )
+        rows = _response_rows(data)
+        return [_parse_product(row) for row in rows[:limit]]
+
+    async def index_product_covers(
+        self,
+        *,
+        product_ids: list[int] | None = None,
+        source_product_ids: list[str] | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "marketplace": "uzum",
+            "limit": limit,
+        }
+        if product_ids:
+            payload["product_ids"] = product_ids
+        if source_product_ids:
+            payload["source_product_ids"] = source_product_ids
+        data = await self._post("/v1/products/visual-index/", payload=payload)
+        return data if isinstance(data, dict) else {}
 
     async def get_product(self, product_id: int) -> ProductDTO:
         return _parse_product(await self._get(f"/v1/products/{product_id}/"))
@@ -77,6 +117,22 @@ class ServerAPIClient:
             raise RuntimeError("Client session is not started.")
         try:
             async with self._session.get(f"{self.base_url}{path}", params=params) as response:
+                body = await response.text()
+                if response.status >= 400:
+                    raise ServerAPIError(f"Server returned HTTP {response.status}: {body[:200]}")
+                return await response.json(content_type=None)
+        except ClientError as exc:
+            raise ServerAPIError(f"Cannot connect to server API: {exc}") from exc
+
+    async def _post(
+        self,
+        path: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        if self._session is None:
+            raise RuntimeError("Client session is not started.")
+        try:
+            async with self._session.post(f"{self.base_url}{path}", json=payload) as response:
                 body = await response.text()
                 if response.status >= 400:
                     raise ServerAPIError(f"Server returned HTTP {response.status}: {body[:200]}")
@@ -155,6 +211,13 @@ def _parse_product(row: dict[str, Any]) -> ProductDTO:
         reviews_count=row.get("reviews_count"),
         category_path_text=row.get("category_path_text"),
     )
+
+
+def _response_rows(data: dict[str, Any] | list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if isinstance(data, list):
+        return data
+    rows = data.get("results", [])
+    return rows if isinstance(rows, list) else []
 
 
 def _format_price(value: str, currency: str, language_code: str | None = None) -> str:

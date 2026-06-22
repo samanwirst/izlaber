@@ -104,6 +104,10 @@ class Product(TimestampedModel):
         db_index=True,
     )
     cover_image_url = models.URLField(max_length=1024, blank=True, null=True)
+    cover_image_ahash = models.CharField(max_length=16, blank=True, null=True, db_index=True)
+    cover_image_dhash = models.CharField(max_length=16, blank=True, null=True, db_index=True)
+    cover_image_fingerprint_url = models.URLField(max_length=1024, blank=True, null=True)
+    cover_image_fingerprint_at = models.DateTimeField(blank=True, null=True)
     image_urls = models.JSONField(default=list, blank=True)
     specs = models.JSONField(default=dict, blank=True)
     raw_data = models.JSONField(default=dict, blank=True)
@@ -129,6 +133,10 @@ class Product(TimestampedModel):
             models.Index(fields=["title"]),
             models.Index(fields=["updated_at"]),
             models.Index(fields=["last_seen_at"]),
+            models.Index(
+                fields=["cover_image_ahash", "cover_image_dhash"],
+                name="catalog_pro_cover_hash_idx",
+            ),
             models.Index(
                 fields=["marketplace", "is_active", "current_price"],
                 name="catalog_pro_mkt_act_price_idx",

@@ -1,16 +1,24 @@
 import logging
 import re
+from io import BytesIO
 from uuid import uuid4
 
 from aiogram import F, Router
-from aiogram.enums import ParseMode
+from aiogram.enums import ChatAction, ParseMode
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
-from aiogram.types import InlineQueryResultArticle, InputTextMessageContent, Message
+from aiogram.types import InlineQueryResultArticle, InputTextMessageContent, Message, PhotoSize
 
 from bot.config import Config
 from bot.keyboards.main_menu import is_more_button_text, main_menu_keyboard, more_results_keyboard
 from bot.locales import format_message, language_from_message
+from bot.services.ai_audio import transcribe_voice_message
 from bot.services.ai_reranker import SearchExpansion, rank_products, rerank_products
+from bot.services.ai_runtime import ai_runtime_state
+from bot.services.ai_vision import (
+    PhotoSearchQuery,
+    identify_product_photo,
+    rerank_photo_products_by_image,
+)
 from bot.services.api_client import (
     ProductDTO,
     ServerAPIClient,
@@ -18,12 +26,17 @@ from bot.services.api_client import (
     render_product_card,
     render_products,
 )
+from bot.services.image_fingerprint import ImageFingerprintError, image_fingerprint
 from bot.services.search_state import SearchSession, search_state
 
 router = Router(name="common")
 logger = logging.getLogger(__name__)
 
 TOKEN_RE = re.compile(r"[0-9a-zа-яё]+", re.IGNORECASE)
+UZUM_PRODUCT_ID_RE = re.compile(
+    r"(?:https?://)?(?:www\.)?uzum\.uz/\S*/product/\S+-(\d+)",
+    re.IGNORECASE,
+)
 V_NECK_RE = re.compile(
     r"(?<![0-9a-zа-яё])v\s*[-–—]?\s*(?:образн\w*|вырез\w*)"
     r"|(?<![0-9a-zа-яё])v[-\s]?neck(?![0-9a-zа-яё])"
@@ -212,47 +225,196 @@ async def search_more(message: Message, config: Config) -> None:
     await _send_products(message, products, start_index=session.offset + 1, language_code=language)
 
 
-@router.message(F.text)
-async def search_uzum(message: Message, config: Config) -> None:
+@router.message(F.photo)
+async def search_uzum_by_photo(message: Message, config: Config) -> None:
     language = language_from_message(message)
-    query = (message.text or "").strip()
-    if not query:
+    photo = _select_photo_for_vision(message.photo or [], config)
+    if photo is None:
         await message.answer(
-            format_message("empty_query", language),
+            format_message("photo_download_failed", language),
             reply_markup=main_menu_keyboard(language),
         )
         return
 
-    ranked_products = await _load_ranked_candidates(
-        query=query,
-        candidate_offset=0,
+    image_bytes = await _download_photo_bytes(message, photo, config)
+    if image_bytes is None:
+        await message.answer(
+            format_message("photo_download_failed", language),
+            reply_markup=main_menu_keyboard(language),
+        )
+        return
+    if len(image_bytes) > config.openai_photo_max_download_bytes:
+        await message.answer(
+            format_message("photo_too_large", language),
+            reply_markup=main_menu_keyboard(language),
+        )
+        return
+
+    if _photo_search_available(config):
+        await message.bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
+        photo_query = await identify_product_photo(
+            image_bytes=image_bytes,
+            mime_type="image/jpeg",
+            caption=message.caption or "",
+            config=config,
+        )
+        if photo_query is not None:
+            used_query, ranked_products = await _load_photo_ranked_candidates(
+                image_bytes=image_bytes,
+                photo_query=photo_query,
+                config=config,
+                message=message,
+            )
+            if ranked_products is None:
+                return
+            if not ranked_products:
+                search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
+                await message.answer(
+                    format_message("photo_no_results", language, query=photo_query.query),
+                    reply_markup=main_menu_keyboard(language),
+                )
+                return
+
+            products = ranked_products[: config.product_search_limit]
+            search_state.set(
+                chat_id=message.chat.id,
+                user_id=_user_id(message),
+                query=used_query,
+                products=ranked_products,
+                offset=len(products),
+                candidate_offset=-1,
+            )
+            await message.answer(
+                format_message(
+                    "photo_found_intro",
+                    language,
+                    query=used_query,
+                    count=len(products),
+                ),
+                reply_markup=more_results_keyboard(language),
+            )
+            await _send_products(message, products, start_index=1, language_code=language)
+            return
+
+        if not ai_runtime_state.ai_allowed():
+            await message.answer(
+                format_message("photo_ai_unavailable", language),
+                reply_markup=main_menu_keyboard(language),
+            )
+            return
+
+    visual_products = await _load_visual_match_candidates(
+        image_bytes=image_bytes,
         config=config,
         message=message,
     )
-    if ranked_products is None:
+    if visual_products is None:
         return
-    if not ranked_products:
-        search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
+    if visual_products:
+        products = visual_products[: config.product_search_limit]
+        search_state.set(
+            chat_id=message.chat.id,
+            user_id=_user_id(message),
+            query="photo visual match",
+            products=visual_products,
+            offset=len(products),
+            candidate_offset=-1,
+        )
         await message.answer(
-            format_message("no_results", language, query=query),
+            format_message("photo_visual_found_intro", language, count=len(products)),
+            reply_markup=more_results_keyboard(language),
+        )
+        await _send_products(message, products, start_index=1, language_code=language)
+        return
+
+    search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
+    await message.answer(
+        format_message("photo_visual_no_results", language),
+        reply_markup=main_menu_keyboard(language),
+    )
+
+
+@router.message(F.voice)
+async def search_uzum_by_voice(message: Message, config: Config) -> None:
+    language = language_from_message(message)
+    voice = message.voice
+    if voice is None:
+        await message.answer(
+            format_message("voice_download_failed", language),
             reply_markup=main_menu_keyboard(language),
         )
         return
 
-    products = ranked_products[: config.product_search_limit]
-    search_state.set(
-        chat_id=message.chat.id,
-        user_id=_user_id(message),
-        query=query,
-        products=ranked_products,
-        offset=len(products),
-        candidate_offset=len(ranked_products),
+    if voice.duration > config.openai_voice_max_duration_seconds:
+        await message.answer(
+            format_message("voice_too_long", language),
+            reply_markup=main_menu_keyboard(language),
+        )
+        return
+    if voice.file_size and voice.file_size > config.openai_voice_max_download_bytes:
+        await message.answer(
+            format_message("voice_too_large", language),
+            reply_markup=main_menu_keyboard(language),
+        )
+        return
+    if not _voice_search_available(config):
+        await message.answer(
+            format_message("voice_ai_unavailable", language),
+            reply_markup=main_menu_keyboard(language),
+        )
+        return
+
+    audio_bytes = await _download_telegram_file_bytes(
+        message=message,
+        file_id=voice.file_id,
+        timeout_seconds=config.openai_voice_timeout,
     )
-    await message.answer(
-        format_message("found_intro", language, query=query, count=len(products)),
-        reply_markup=more_results_keyboard(language),
+    if audio_bytes is None:
+        await message.answer(
+            format_message("voice_download_failed", language),
+            reply_markup=main_menu_keyboard(language),
+        )
+        return
+    if len(audio_bytes) > config.openai_voice_max_download_bytes:
+        await message.answer(
+            format_message("voice_too_large", language),
+            reply_markup=main_menu_keyboard(language),
+        )
+        return
+
+    await message.bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
+    transcript = await transcribe_voice_message(
+        audio_bytes=audio_bytes,
+        filename="voice.ogg",
+        config=config,
+        language_hint=language,
     )
-    await _send_products(message, products, start_index=1, language_code=language)
+    if transcript is None:
+        message_key = (
+            "voice_ai_unavailable"
+            if not ai_runtime_state.ai_allowed()
+            else "voice_transcription_failed"
+        )
+        await message.answer(
+            format_message(message_key, language),
+            reply_markup=main_menu_keyboard(language),
+        )
+        return
+
+    await _run_text_search(
+        message=message,
+        config=config,
+        query=transcript,
+        empty_key="voice_transcription_failed",
+        no_results_key="no_results",
+        intro_key="voice_found_intro",
+    )
+
+
+@router.message(F.text)
+async def search_uzum(message: Message, config: Config) -> None:
+    query = (message.text or "").strip()
+    await _run_text_search(message=message, config=config, query=query)
 
 
 async def _next_products(
@@ -264,6 +426,8 @@ async def _next_products(
     products = session.products[session.offset : session.offset + config.product_search_limit]
     if products:
         return products
+    if session.candidate_offset < 0:
+        return []
 
     next_products = await _load_ranked_candidates(
         query=session.query,
@@ -287,8 +451,14 @@ async def _load_ranked_candidates(
     candidate_offset: int,
     config: Config,
     message: Message | None,
+    allow_ai_rerank: bool = True,
 ) -> list[ProductDTO] | None:
     try:
+        initial_limit = (
+            _initial_candidate_limit(config, candidate_offset)
+            if allow_ai_rerank
+            else config.product_search_limit
+        )
         async with ServerAPIClient(
             config.server_api_base_url,
             config.bot_api_key,
@@ -296,7 +466,7 @@ async def _load_ranked_candidates(
         ) as client:
             products = await client.search_products(
                 query=query,
-                limit=_initial_candidate_limit(config, candidate_offset),
+                limit=initial_limit,
                 offset=candidate_offset,
             )
             if not _should_use_ai_rerank(
@@ -304,6 +474,7 @@ async def _load_ranked_candidates(
                 products=products,
                 config=config,
                 candidate_offset=candidate_offset,
+                allow_ai_rerank=allow_ai_rerank,
             ):
                 return products
 
@@ -356,6 +527,57 @@ async def _load_ranked_candidates(
     return ranked_result.products
 
 
+async def _run_text_search(
+    *,
+    message: Message,
+    config: Config,
+    query: str,
+    empty_key: str = "empty_query",
+    no_results_key: str = "no_results",
+    intro_key: str = "found_intro",
+) -> None:
+    language = language_from_message(message)
+    query = " ".join(query.split())
+    if not query:
+        await message.answer(
+            format_message(empty_key, language),
+            reply_markup=main_menu_keyboard(language),
+        )
+        return
+
+    ranked_products = await _load_ranked_candidates(
+        query=query,
+        candidate_offset=0,
+        config=config,
+        message=message,
+        allow_ai_rerank=True,
+    )
+    if ranked_products is None:
+        return
+    if not ranked_products:
+        search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
+        await message.answer(
+            format_message(no_results_key, language, query=query),
+            reply_markup=main_menu_keyboard(language),
+        )
+        return
+
+    products = ranked_products[: config.product_search_limit]
+    search_state.set(
+        chat_id=message.chat.id,
+        user_id=_user_id(message),
+        query=query,
+        products=ranked_products,
+        offset=len(products),
+        candidate_offset=len(ranked_products),
+    )
+    await message.answer(
+        format_message(intro_key, language, query=query, count=len(products)),
+        reply_markup=more_results_keyboard(language),
+    )
+    await _send_products(message, products, start_index=1, language_code=language)
+
+
 def _candidate_limit(config: Config) -> int:
     if config.openai_rerank_enabled and config.openai_api_key:
         return max(config.product_search_limit, config.openai_candidate_limit)
@@ -379,7 +601,10 @@ def _should_use_ai_rerank(
     products: list[ProductDTO],
     config: Config,
     candidate_offset: int,
+    allow_ai_rerank: bool,
 ) -> bool:
+    if not allow_ai_rerank:
+        return False
     if not config.openai_rerank_enabled or not config.openai_api_key:
         return False
     if not config.openai_rerank_fallback_only:
@@ -565,6 +790,256 @@ def _search_expansion_allowed(*, config: Config, candidate_offset: int) -> bool:
         and config.openai_rerank_enabled
         and config.openai_api_key
     )
+
+
+def _photo_search_available(config: Config) -> bool:
+    return bool(
+        config.openai_photo_search_enabled
+        and config.openai_api_key
+        and ai_runtime_state.ai_allowed()
+    )
+
+
+def _voice_search_available(config: Config) -> bool:
+    return bool(
+        config.openai_voice_search_enabled
+        and config.openai_api_key
+        and ai_runtime_state.ai_allowed()
+    )
+
+
+async def _download_photo_bytes(
+    message: Message,
+    photo: PhotoSize,
+    config: Config,
+) -> bytes | None:
+    return await _download_telegram_file_bytes(
+        message=message,
+        file_id=photo.file_id,
+        timeout_seconds=config.openai_photo_timeout,
+    )
+
+
+async def _download_telegram_file_bytes(
+    *,
+    message: Message,
+    file_id: str,
+    timeout_seconds: float,
+) -> bytes | None:
+    destination = BytesIO()
+    try:
+        await message.bot.download(
+            file_id,
+            destination=destination,
+            timeout=max(1, int(timeout_seconds)),
+        )
+    except TelegramAPIError as error:
+        logger.warning("Cannot download Telegram file %s: %s", file_id, error)
+        return None
+    return destination.getvalue()
+
+
+def _select_photo_for_vision(
+    photos: list[PhotoSize],
+    config: Config,
+) -> PhotoSize | None:
+    if not photos:
+        return None
+
+    max_pixels = max(1, config.openai_photo_max_pixels)
+    max_bytes = max(1, config.openai_photo_max_download_bytes)
+    by_pixels = sorted(photos, key=lambda item: item.width * item.height)
+
+    affordable = [
+        photo
+        for photo in by_pixels
+        if photo.width * photo.height <= max_pixels
+        and (photo.file_size is None or photo.file_size <= max_bytes)
+    ]
+    if affordable:
+        return affordable[-1]
+
+    by_size = sorted(
+        photos,
+        key=lambda item: (
+            item.file_size if item.file_size is not None else max_bytes + 1,
+            item.width * item.height,
+        ),
+    )
+    return by_size[0]
+
+
+async def _load_photo_ranked_candidates(
+    *,
+    image_bytes: bytes,
+    photo_query: PhotoSearchQuery,
+    config: Config,
+    message: Message,
+) -> tuple[str, list[ProductDTO] | None]:
+    language = language_from_message(message)
+    queries = _photo_search_queries(photo_query)
+    query_limit = _photo_candidate_query_limit(config, len(queries))
+    products: list[ProductDTO] = []
+
+    try:
+        async with ServerAPIClient(
+            config.server_api_base_url,
+            config.bot_api_key,
+            timeout=config.server_api_timeout,
+        ) as client:
+            for query in queries:
+                products = _merge_unique_products(
+                    products,
+                    await client.search_products(
+                        query=query,
+                        limit=query_limit,
+                        offset=0,
+                    ),
+                )
+                if len(products) >= config.openai_photo_candidate_limit:
+                    break
+    except ServerAPIError as error:
+        logger.warning("Photo product candidate search failed for %r: %s", queries, error)
+        await message.answer(
+            format_message("catalog_unavailable", language),
+            disable_web_page_preview=True,
+            reply_markup=main_menu_keyboard(language),
+        )
+        return photo_query.query, None
+
+    products = products[: max(config.product_search_limit, config.openai_photo_candidate_limit)]
+    if not products:
+        return photo_query.query, []
+
+    ranked_products = await rerank_photo_products_by_image(
+        image_bytes=image_bytes,
+        mime_type="image/jpeg",
+        photo_query=photo_query,
+        products=products,
+        config=config,
+    )
+    if ranked_products is None:
+        if config.openai_photo_text_fallback_enabled:
+            return photo_query.query, products
+        await message.answer(
+            format_message("photo_ai_unavailable", language),
+            reply_markup=main_menu_keyboard(language),
+        )
+        return photo_query.query, None
+    if ranked_products:
+        return photo_query.query, ranked_products
+    if config.openai_photo_text_fallback_enabled:
+        return photo_query.query, products
+    return photo_query.query, []
+
+
+def _photo_search_queries(photo_query: PhotoSearchQuery) -> list[str]:
+    raw_queries = [
+        photo_query.query,
+        *photo_query.alternative_queries,
+        " ".join(
+            part
+            for part in (
+                photo_query.brand,
+                photo_query.visible_text,
+                photo_query.object_type,
+            )
+            if part
+        ),
+    ]
+    queries = []
+    seen = set()
+    for query in raw_queries:
+        cleaned = " ".join(query.split())
+        key = cleaned.casefold()
+        if not cleaned or key in seen:
+            continue
+        queries.append(cleaned)
+        seen.add(key)
+        if len(queries) >= 5:
+            break
+    return queries or [photo_query.query]
+
+
+def _photo_candidate_query_limit(config: Config, query_count: int) -> int:
+    query_count = max(1, query_count)
+    per_query = config.openai_photo_candidate_limit // query_count + config.product_search_limit
+    return max(config.product_search_limit, min(40, per_query))
+
+
+async def _load_visual_match_candidates(
+    *,
+    image_bytes: bytes,
+    config: Config,
+    message: Message,
+) -> list[ProductDTO] | None:
+    if not config.photo_visual_match_enabled:
+        return []
+
+    language = language_from_message(message)
+    try:
+        fingerprint = image_fingerprint(image_bytes)
+    except ImageFingerprintError as error:
+        logger.warning("Cannot fingerprint Telegram photo: %s", error)
+        await message.answer(
+            format_message("photo_visual_unavailable", language),
+            reply_markup=main_menu_keyboard(language),
+        )
+        return None
+
+    try:
+        async with ServerAPIClient(
+            config.server_api_base_url,
+            config.bot_api_key,
+            timeout=config.server_api_timeout,
+        ) as client:
+            products = await client.visual_search_products(
+                ahash=fingerprint.ahash,
+                dhash=fingerprint.dhash,
+                max_distance=config.photo_visual_match_max_distance,
+                limit=max(config.product_search_limit, 25),
+            )
+            if products:
+                return products
+
+            source_product_ids = _source_product_ids_from_text(message.caption or "")
+            if not source_product_ids:
+                return []
+
+            stats = await client.index_product_covers(
+                source_product_ids=source_product_ids,
+                limit=len(source_product_ids),
+            )
+            logger.info(
+                "Indexed product covers on demand from photo caption: ids=%s stats=%s",
+                source_product_ids,
+                stats,
+            )
+            return await client.visual_search_products(
+                ahash=fingerprint.ahash,
+                dhash=fingerprint.dhash,
+                max_distance=config.photo_visual_match_max_distance,
+                limit=max(config.product_search_limit, 25),
+            )
+    except ServerAPIError as error:
+        logger.warning("Visual product search failed: %s", error)
+        await message.answer(
+            format_message("catalog_unavailable", language),
+            disable_web_page_preview=True,
+            reply_markup=main_menu_keyboard(language),
+        )
+        return None
+
+
+def _source_product_ids_from_text(text: str) -> list[str]:
+    ids = []
+    seen = set()
+    for match in UZUM_PRODUCT_ID_RE.finditer(text):
+        product_id = match.group(1)
+        if product_id not in seen:
+            ids.append(product_id)
+            seen.add(product_id)
+    return ids[:5]
 
 
 async def _send_products(
