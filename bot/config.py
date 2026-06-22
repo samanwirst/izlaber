@@ -19,6 +19,10 @@ class Config:
     bot_api_key: str = ""
     product_search_limit: int = 5
     server_api_timeout: float = 10.0
+    consent_enabled: bool = True
+    consent_version: str = "2026-06-consent-v1"
+    privacy_policy_url: str = ""
+    sponsored_ads_policy_url: str = ""
     analytics_enabled: bool = True
     analytics_timeout: float = 2.0
     openai_api_key: str = ""
@@ -78,6 +82,12 @@ def load_config() -> Config:
         bot_api_key=getenv("BOT_API_KEY", ""),
         product_search_limit=int(getenv("BOT_PRODUCT_SEARCH_LIMIT", "5")),
         server_api_timeout=float(getenv("BOT_SERVER_API_TIMEOUT", "10")),
+        consent_enabled=getenv("BOT_CONSENT_ENABLED", "true").lower()
+        in {"1", "true", "yes"},
+        consent_version=getenv("BOT_CONSENT_VERSION", "2026-06-consent-v1").strip()
+        or "2026-06-consent-v1",
+        privacy_policy_url=getenv("BOT_PRIVACY_POLICY_URL", "").strip(),
+        sponsored_ads_policy_url=getenv("BOT_SPONSORED_ADS_POLICY_URL", "").strip(),
         analytics_enabled=getenv("BOT_ANALYTICS_ENABLED", "true").lower()
         in {"1", "true", "yes"},
         analytics_timeout=float(getenv("BOT_ANALYTICS_TIMEOUT", "2")),

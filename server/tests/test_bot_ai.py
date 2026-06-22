@@ -1,8 +1,9 @@
 from dataclasses import replace
+from datetime import datetime
 from uuid import UUID
 
 import pytest
-from aiogram.types import PhotoSize
+from aiogram.types import Chat, Message, PhotoSize
 
 from bot.config import BotConfig, Config
 from bot.handlers.admin import _format_usd, _is_openai_status_admin
@@ -18,6 +19,7 @@ from bot.handlers.common import (
     _strip_bot_username,
     _voice_search_available,
 )
+from bot.middlewares.consent import _is_consent_event
 from bot.services.ai_audio import _language_name, _transcription_prompt
 from bot.services.ai_reranker import (
     OPENAI_PROBE_MAX_OUTPUT_TOKENS,
@@ -35,6 +37,7 @@ from bot.services.api_client import (
     product_click_url,
     render_product_card,
 )
+from bot.services.consent_store import UserConsentStore
 from bot.services.openai_billing import OpenAICostSummary, _merge_cost_buckets
 from bot.services.search_state import SearchStateStore
 
@@ -114,6 +117,70 @@ def test_search_state_isolated_by_user():
     assert store.get(chat_id=10, user_id=1).products == first_products
     assert store.get(chat_id=10, user_id=2).query == "notebook"
     assert store.get(chat_id=10, user_id=2).products == second_products
+
+
+@pytest.mark.asyncio
+async def test_user_consent_store_preloads_and_updates_cache():
+    class Client:
+        async def load_active_user_consents(self, consent_version):
+            assert consent_version == "test-v1"
+            return {1, 2}
+
+        async def set_user_consent(
+            self,
+            *,
+            telegram_user_id,
+            action,
+            consent_version,
+            language_code,
+        ):
+            assert telegram_user_id == 1
+            assert action == "revoke"
+            assert consent_version == "test-v1"
+            assert language_code == "ru"
+            return False
+
+    store = UserConsentStore()
+    await store.preload(Client(), "test-v1")
+
+    assert store.has_active(1) is True
+    assert store.has_active(3) is False
+
+    active = await store.set_consent(
+        user_id=1,
+        action="revoke",
+        consent_version="test-v1",
+        language_code="ru",
+        client=Client(),
+    )
+
+    assert active is False
+    assert store.has_active(1) is False
+
+
+def test_consent_middleware_only_allows_exact_consent_command():
+    consent_message = Message(
+        message_id=1,
+        date=datetime.now(),
+        chat=Chat(id=1, type="private"),
+        text="/consent",
+    )
+    targeted_consent_message = Message(
+        message_id=2,
+        date=datetime.now(),
+        chat=Chat(id=1, type="private"),
+        text="/consent@TestBot",
+    )
+    bypass_attempt = Message(
+        message_id=3,
+        date=datetime.now(),
+        chat=Chat(id=1, type="private"),
+        text="/consentfoo iphone",
+    )
+
+    assert _is_consent_event(consent_message) is True
+    assert _is_consent_event(targeted_consent_message) is True
+    assert _is_consent_event(bypass_attempt) is False
 
 
 def test_guest_query_strips_bot_username():

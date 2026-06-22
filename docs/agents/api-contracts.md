@@ -22,10 +22,19 @@ All internal consumers use `X-Internal-API-Key`.
 | `GET /api/v1/categories/` | Categories, optionally by marketplace. |
 | `GET /api/v1/user-preferences/languages/` | Load all stored Telegram language preferences. |
 | `GET/POST /api/v1/user-preferences/languages/{telegram_user_id}/` | Read/write one language preference. |
+| `GET /api/v1/user-consents/` | Load Telegram consent records. Bot preload uses `active_only=true&version=...`. |
+| `GET/POST /api/v1/user-consents/{telegram_user_id}/` | Read one consent record or record `accept`, `decline`, or `revoke`. |
 | `POST /api/v1/analytics/events/` | Store bot-side analytics events. |
 | `GET /api/v1/redirect/products/{product_id}/` | Store product click analytics, optionally set analytics cookie, then redirect to product URL. |
 
 Bot client wrapper: `bot/services/api_client.py`.
+
+Consent contract:
+
+- `action=accept` sets both personal data and sponsored ads timestamps and clears `revoked_at`/`declined_at`.
+- `action=decline` clears acceptance timestamps and stores `declined_at`.
+- `action=revoke` stores `revoked_at`; the bot must treat the user as inactive until they accept again.
+- `has_active_consent` is true only when the stored version matches the requested/current version and both acceptance timestamps exist.
 
 ## Parser-Facing Endpoints
 

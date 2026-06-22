@@ -5,6 +5,7 @@ from django.conf import settings
 from django.db.models import Case, IntegerField, Q, When
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -12,7 +13,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.api_auth.authentication import BotAPIKeyAuthentication
-from apps.catalog.models import AnalyticsEvent, Category, Marketplace, Product, UserPreference
+from apps.catalog.models import (
+    AnalyticsEvent,
+    Category,
+    Marketplace,
+    Product,
+    UserConsent,
+    UserPreference,
+)
 from apps.catalog.search import query_price_filters, search_product_ids
 from apps.catalog.serializers import (
     AnalyticsEventSerializer,
@@ -20,6 +28,7 @@ from apps.catalog.serializers import (
     MarketplaceSerializer,
     ProductCardSerializer,
     ProductSerializer,
+    UserConsentSerializer,
     UserPreferenceSerializer,
 )
 from apps.catalog.visual import visual_search_product_ids
@@ -243,6 +252,88 @@ class UserPreferenceDetailView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+class UserConsentListView(APIView):
+    authentication_classes = (BotAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        version = _consent_version(request.query_params.get("version"))
+        queryset = UserConsent.objects.all().order_by("telegram_user_id")
+        active_only = str(request.query_params.get("active_only", "false")).lower()
+        if active_only in {"true", "1", "yes"}:
+            queryset = queryset.filter(
+                consent_version=version,
+                personal_data_accepted_at__isnull=False,
+                sponsored_ads_accepted_at__isnull=False,
+                revoked_at__isnull=True,
+            )
+        serializer = UserConsentSerializer(
+            queryset,
+            many=True,
+            context={"consent_version": version},
+        )
+        return Response(serializer.data)
+
+
+class UserConsentDetailView(APIView):
+    authentication_classes = (BotAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request, telegram_user_id: str):
+        consent = get_object_or_404(UserConsent, telegram_user_id=telegram_user_id)
+        version = _consent_version(request.query_params.get("version"))
+        serializer = UserConsentSerializer(consent, context={"consent_version": version})
+        return Response(serializer.data)
+
+    def post(self, request, telegram_user_id: str):
+        try:
+            user_id = int(telegram_user_id)
+        except ValueError:
+            return Response({"detail": "telegram_user_id must be an integer"}, status=400)
+
+        action = str(request.data.get("action") or "").strip().casefold()
+        if action not in {"accept", "decline", "revoke"}:
+            return Response({"detail": "action must be accept, decline, or revoke"}, status=400)
+
+        version = _consent_version(request.data.get("consent_version"))
+        language_code = _normalize_language_code(str(request.data.get("language_code") or ""))
+        now = timezone.now()
+        metadata = request.data.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+
+        consent, _ = UserConsent.objects.get_or_create(
+            telegram_user_id=user_id,
+            defaults={
+                "consent_version": version,
+                "language_code": language_code,
+                "metadata": metadata,
+            },
+        )
+        consent.consent_version = version
+        consent.language_code = language_code
+        consent.source = UserConsent.Source.BOT
+        consent.metadata = metadata
+
+        if action == "accept":
+            consent.personal_data_accepted_at = now
+            consent.sponsored_ads_accepted_at = now
+            consent.declined_at = None
+            consent.revoked_at = None
+        elif action == "decline":
+            consent.personal_data_accepted_at = None
+            consent.sponsored_ads_accepted_at = None
+            consent.declined_at = now
+            consent.revoked_at = None
+        else:
+            consent.declined_at = None
+            consent.revoked_at = now
+
+        consent.save()
+        serializer = UserConsentSerializer(consent, context={"consent_version": version})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
 class AnalyticsEventCreateView(APIView):
     authentication_classes = (BotAPIKeyAuthentication,)
     permission_classes = (IsAuthenticated,)
@@ -343,6 +434,11 @@ def _positive_float(value, *, default: float) -> float:
 def _normalize_language_code(language_code: str) -> str:
     base_code = language_code.casefold().replace("_", "-").split("-", maxsplit=1)[0]
     return base_code if base_code in {"uz", "ru", "en"} else "uz"
+
+
+def _consent_version(value: str | None) -> str:
+    version = str(value or "").strip()
+    return version or settings.USER_CONSENT_VERSION
 
 
 def _context_analytics_event(value: str | None) -> AnalyticsEvent | None:

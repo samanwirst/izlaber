@@ -62,6 +62,10 @@ python -m bot.setup_profile
 
 Bot search flow:
 
+- Before search, the bot requires consent for personal data processing and sponsored ads. Without active consent, `/start`, text, photo, voice, guest search, callbacks, and admin commands are blocked and the bot shows the consent prompt again.
+- Consent decisions are stored in the server database as `UserConsent` records. `BOT_CONSENT_VERSION` and `USER_CONSENT_VERSION` must match; bump the version whenever the consent text or covered data uses materially change.
+- Users can review or revoke consent with `/consent`. Revoked/declined users can accept again from the same prompt.
+- Implementation notes and legal-source links are in `docs/consent.md`.
 - User sends a product name.
 - User can also send a product photo; the bot uses a visual matching pipeline to find similar product cards.
 - Bot detects the user's Telegram app language and answers in Uzbek, Russian, or English.
@@ -74,7 +78,7 @@ Analytics:
 - Bot actions are stored in `catalog_analyticsevent`: `/start`, `/help`, `/lang`, text/photo/voice searches, no-result searches, `More`, product impressions, and product clicks.
 - Search and impression events follow marketplace-friendly event names where practical: `search`, `view_item_list`, and `select_item`.
 - Product click tracking uses `/api/v1/redirect/products/{id}/` and then redirects to the real product URL. Set `BOT_PUBLIC_BASE_URL` to the public server origin so Telegram users can open those tracking links.
-- Cookie-level click attribution is off by default. Enable `ANALYTICS_COOKIE_ENABLED=true` only after the privacy policy/consent flow covers analytics cookies.
+- Cookie-level click attribution is off by default. Enable `ANALYTICS_COOKIE_ENABLED=true` only when the active consent text and privacy policy cover analytics cookies.
 - Raw IP addresses are not stored. Optional IP hashing is controlled by `ANALYTICS_HASH_IP`.
 
 Guest Mode:

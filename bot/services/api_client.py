@@ -136,6 +136,40 @@ class ServerAPIClient:
             return str(data.get("language_code") or language_code)
         return language_code
 
+    async def load_active_user_consents(self, consent_version: str) -> set[int]:
+        data = await self._get(
+            "/v1/user-consents/",
+            params={"active_only": "true", "version": consent_version},
+        )
+        rows = data if isinstance(data, list) else []
+        user_ids: set[int] = set()
+        for row in rows:
+            if not isinstance(row, dict) or not row.get("has_active_consent"):
+                continue
+            try:
+                user_ids.add(int(row["telegram_user_id"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+        return user_ids
+
+    async def set_user_consent(
+        self,
+        *,
+        telegram_user_id: int,
+        action: str,
+        consent_version: str,
+        language_code: str,
+    ) -> bool:
+        data = await self._post(
+            f"/v1/user-consents/{telegram_user_id}/",
+            payload={
+                "action": action,
+                "consent_version": consent_version,
+                "language_code": language_code,
+            },
+        )
+        return bool(isinstance(data, dict) and data.get("has_active_consent"))
+
     async def create_analytics_event(self, payload: dict[str, Any]) -> UUID | None:
         data = await self._post("/v1/analytics/events/", payload=payload)
         if not isinstance(data, dict) or not data.get("event_id"):

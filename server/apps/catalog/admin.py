@@ -7,6 +7,7 @@ from apps.catalog.models import (
     Product,
     ProductSnapshot,
     Seller,
+    UserConsent,
 )
 
 
@@ -52,6 +53,23 @@ class ProductAdmin(admin.ModelAdmin):
 class ProductSnapshotAdmin(admin.ModelAdmin):
     list_display = ("product", "price", "availability", "content_hash", "created_at")
     search_fields = ("product__title", "content_hash")
+
+
+@admin.register(UserConsent)
+class UserConsentAdmin(admin.ModelAdmin):
+    list_display = (
+        "telegram_user_id",
+        "consent_version",
+        "language_code",
+        "personal_data_accepted_at",
+        "sponsored_ads_accepted_at",
+        "declined_at",
+        "revoked_at",
+        "updated_at",
+    )
+    search_fields = ("=telegram_user_id", "consent_version")
+    list_filter = ("consent_version", "language_code", "source", "revoked_at")
+    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(AnalyticsEvent)

@@ -19,6 +19,16 @@ SERVER_API_BASE_URL
 
 Optional AI/photo/voice behavior is controlled by `OPENAI_*` and `PHOTO_VISUAL_*` variables.
 
+Consent variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `BOT_CONSENT_ENABLED` | Enables bot-side consent gate. Keep enabled in production. |
+| `BOT_CONSENT_VERSION` | Version string stored for new Telegram user consent. |
+| `USER_CONSENT_VERSION` | Server fallback/current version; keep equal to `BOT_CONSENT_VERSION`. |
+| `BOT_PRIVACY_POLICY_URL` | Optional URL button shown on the consent prompt. |
+| `BOT_SPONSORED_ADS_POLICY_URL` | Optional URL button shown on the consent prompt. |
+
 Analytics variables:
 
 | Variable | Purpose |

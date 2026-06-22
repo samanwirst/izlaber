@@ -11,6 +11,7 @@ from bot.config import load_config
 from bot.loader import create_bot, create_dispatcher
 from bot.services.ai_monitor import monitor_openai_balance
 from bot.services.api_client import ServerAPIClient, ServerAPIError
+from bot.services.consent_store import user_consents
 from bot.services.language_store import language_preferences
 
 
@@ -35,8 +36,9 @@ async def main() -> None:
                 timeout=config.server_api_timeout,
             ) as client:
                 await language_preferences.preload(client)
+                await user_consents.preload(client, config.consent_version)
         except ServerAPIError as error:
-            logging.getLogger(__name__).warning("Language preferences preload failed: %s", error)
+            logging.getLogger(__name__).warning("Bot user state preload failed: %s", error)
 
     await bot.delete_webhook(drop_pending_updates=True)
     monitor_task = asyncio.create_task(monitor_openai_balance(bot, config))

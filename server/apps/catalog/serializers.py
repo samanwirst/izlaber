@@ -7,6 +7,7 @@ from apps.catalog.models import (
     Product,
     ProductSnapshot,
     Seller,
+    UserConsent,
     UserPreference,
 )
 
@@ -116,6 +117,39 @@ class UserPreferenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserPreference
         fields = ("telegram_user_id", "language_code", "created_at", "updated_at")
+
+
+class UserConsentSerializer(serializers.ModelSerializer):
+    has_active_consent = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserConsent
+        fields = (
+            "telegram_user_id",
+            "consent_version",
+            "language_code",
+            "source",
+            "personal_data_accepted_at",
+            "sponsored_ads_accepted_at",
+            "declined_at",
+            "revoked_at",
+            "metadata",
+            "has_active_consent",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "personal_data_accepted_at",
+            "sponsored_ads_accepted_at",
+            "declined_at",
+            "revoked_at",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_has_active_consent(self, obj: UserConsent) -> bool:
+        version = self.context.get("consent_version")
+        return obj.has_active_consent(str(version)) if version else obj.has_active_consent()
 
 
 class AnalyticsEventSerializer(serializers.ModelSerializer):

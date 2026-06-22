@@ -212,6 +212,41 @@ class UserPreference(TimestampedModel):
         return f"{self.telegram_user_id}: {self.language_code}"
 
 
+class UserConsent(TimestampedModel):
+    class Source(models.TextChoices):
+        BOT = "bot", "Bot"
+
+    telegram_user_id = models.BigIntegerField(unique=True, db_index=True)
+    consent_version = models.SlugField(max_length=64)
+    language_code = models.SlugField(max_length=8, default="uz")
+    source = models.CharField(max_length=32, choices=Source.choices, default=Source.BOT)
+    personal_data_accepted_at = models.DateTimeField(blank=True, null=True)
+    sponsored_ads_accepted_at = models.DateTimeField(blank=True, null=True)
+    declined_at = models.DateTimeField(blank=True, null=True)
+    revoked_at = models.DateTimeField(blank=True, null=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ("telegram_user_id",)
+        indexes = [
+            models.Index(fields=["consent_version", "revoked_at"]),
+            models.Index(fields=["personal_data_accepted_at", "sponsored_ads_accepted_at"]),
+        ]
+
+    def has_active_consent(self, consent_version: str | None = None) -> bool:
+        if consent_version and self.consent_version != consent_version:
+            return False
+        return bool(
+            self.personal_data_accepted_at
+            and self.sponsored_ads_accepted_at
+            and self.revoked_at is None
+        )
+
+    def __str__(self) -> str:
+        state = "active" if self.has_active_consent() else "inactive"
+        return f"{self.telegram_user_id}: {self.consent_version} ({state})"
+
+
 class AnalyticsEvent(models.Model):
     class Source(models.TextChoices):
         BOT = "bot", "Bot"

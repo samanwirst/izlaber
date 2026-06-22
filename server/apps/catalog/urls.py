@@ -7,6 +7,8 @@ from apps.catalog.views import (
     MarketplaceViewSet,
     ProductClickRedirectView,
     ProductViewSet,
+    UserConsentDetailView,
+    UserConsentListView,
     UserPreferenceDetailView,
     UserPreferenceListView,
 )
@@ -18,6 +20,12 @@ router.register("products", ProductViewSet, basename="product")
 
 urlpatterns = router.urls + [
     path("analytics/events/", AnalyticsEventCreateView.as_view(), name="analytics-event-create"),
+    path("user-consents/", UserConsentListView.as_view(), name="user-consents"),
+    path(
+        "user-consents/<str:telegram_user_id>/",
+        UserConsentDetailView.as_view(),
+        name="user-consent-detail",
+    ),
     path("user-preferences/languages/", UserPreferenceListView.as_view(), name="user-languages"),
     path(
         "user-preferences/languages/<str:telegram_user_id>/",

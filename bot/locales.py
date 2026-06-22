@@ -45,6 +45,7 @@ LOCALES: dict[str, LocaleCopy] = {
             "start": "Botni ishga tushirish va qidiruvni boshlash",
             "help": "Qidiruv bo'yicha yordam va misollar",
             "lang": "Tilni tanlash",
+            "consent": "Ma'lumotlar va reklama roziligini boshqarish",
         },
         start_text=(
             "Assalomu alaykum! Sizga kerakli mahsulotni topishga yordam beraman.\n\n"
@@ -148,6 +149,39 @@ LOCALES: dict[str, LocaleCopy] = {
             "voice_found_intro": (
                 "Ovozli xabarni shunday tushundim: <b>{query}</b>. Birinchi {count} ta natija:"
             ),
+            "consent_required": (
+                "<b>Rozilik kerak</b>\n\n"
+                "Izlaber ishlashi uchun shaxsiy ma'lumotlaringizni qayta ishlashga va "
+                "homiylik reklamasini ko'rsatishga rozilik kerak. Biz Telegram ID, profil "
+                "tili, xabarlar, qidiruv so'rovlari, yuborilgan foto/ovozli xabarlar va "
+                "kartochkalarga bosishlar haqidagi texnik ma'lumotlardan qidiruv, servisni "
+                "yaxshilash, analitika va reklama uchun foydalanamiz.\n\n"
+                "Rozilikni istalgan vaqtda /consent orqali bekor qilishingiz mumkin. "
+                "Rozilik bo'lmasa, bot so'rovlarni qayta ishlamaydi."
+            ),
+            "consent_accept_button": "Roziman",
+            "consent_decline_button": "Rad etaman",
+            "consent_revoke_button": "Rozilikni bekor qilish",
+            "consent_privacy_button": "Maxfiylik",
+            "consent_ads_button": "Reklama",
+            "consent_first_alert": "Avval rozilikni tasdiqlang.",
+            "consent_accepted": "Rozilik saqlandi.",
+            "consent_ready": "Endi mahsulot nomi, fotosi yoki ovozli xabar yuboring.",
+            "consent_declined": (
+                "Rozilik berilmadi. Bot so'rovlarni qayta ishlamaydi. Davom etish uchun "
+                "rozilikni tasdiqlang."
+            ),
+            "consent_revoked": (
+                "Rozilik bekor qilindi. Bot so'rovlarni qayta ishlamaydi. Davom etish "
+                "uchun rozilikni qayta tasdiqlang."
+            ),
+            "consent_status_active": (
+                "Rozilik faol. Uni bekor qilsangiz, bot mahsulot qidiruvlarini qayta "
+                "ishlashni to'xtatadi."
+            ),
+            "consent_save_failed": (
+                "Rozilikni saqlab bo'lmadi. Server vaqtincha ishlamayapti, keyinroq urinib ko'ring."
+            ),
         },
         product_labels={
             "price": "Narx",
@@ -178,6 +212,7 @@ LOCALES: dict[str, LocaleCopy] = {
             "start": "Запустить бота и начать поиск",
             "help": "Помощь по поиску и примеры запросов",
             "lang": "Выбрать язык",
+            "consent": "Управлять согласием на данные и рекламу",
         },
         start_text=(
             "Здравствуйте! Я помогу найти нужный товар.\n\n"
@@ -281,6 +316,39 @@ LOCALES: dict[str, LocaleCopy] = {
             "voice_found_intro": (
                 "Голосовое распознал как: <b>{query}</b>. Показываю первые {count}:"
             ),
+            "consent_required": (
+                "<b>Нужно согласие</b>\n\n"
+                "Чтобы Izlaber работал, нужно согласие на обработку персональных данных "
+                "и на показ спонсируемой рекламы. Мы используем Telegram ID, язык профиля, "
+                "сообщения, поисковые запросы, отправленные фото/голосовые сообщения и "
+                "технические данные о нажатиях на карточки для поиска, работы сервиса, "
+                "аналитики и рекламы.\n\n"
+                "Согласие можно отозвать в любой момент через /consent. Без согласия бот "
+                "не обрабатывает запросы."
+            ),
+            "consent_accept_button": "Согласен",
+            "consent_decline_button": "Не согласен",
+            "consent_revoke_button": "Отозвать согласие",
+            "consent_privacy_button": "Конфиденциальность",
+            "consent_ads_button": "Реклама",
+            "consent_first_alert": "Сначала подтвердите согласие.",
+            "consent_accepted": "Согласие сохранено.",
+            "consent_ready": "Теперь отправьте название товара, фото или голосовое сообщение.",
+            "consent_declined": (
+                "Согласие не дано. Бот не будет обрабатывать запросы. Чтобы продолжить, "
+                "подтвердите согласие."
+            ),
+            "consent_revoked": (
+                "Согласие отозвано. Бот не будет обрабатывать запросы. Чтобы продолжить, "
+                "подтвердите согласие заново."
+            ),
+            "consent_status_active": (
+                "Согласие активно. Если отозвать его, бот перестанет обрабатывать "
+                "поисковые запросы."
+            ),
+            "consent_save_failed": (
+                "Не удалось сохранить согласие. Сервер временно недоступен, попробуйте позже."
+            ),
         },
         product_labels={
             "price": "Цена",
@@ -310,6 +378,7 @@ LOCALES: dict[str, LocaleCopy] = {
             "start": "Start the bot and search products",
             "help": "Search help and example queries",
             "lang": "Choose language",
+            "consent": "Manage data and sponsored ads consent",
         },
         start_text=(
             "Hi! I can help you find the right product.\n\n"
@@ -409,6 +478,38 @@ LOCALES: dict[str, LocaleCopy] = {
             ),
             "voice_found_intro": (
                 "I transcribed the voice message as: <b>{query}</b>. Showing the first {count}:"
+            ),
+            "consent_required": (
+                "<b>Consent required</b>\n\n"
+                "To use Izlaber, you need to consent to personal data processing and "
+                "sponsored advertising. We use your Telegram ID, profile language, messages, "
+                "search queries, submitted photos/voice messages, and technical card-click "
+                "data for search, service operation, analytics, and advertising.\n\n"
+                "You can revoke consent anytime with /consent. Without consent, the bot "
+                "does not process requests."
+            ),
+            "consent_accept_button": "I agree",
+            "consent_decline_button": "I do not agree",
+            "consent_revoke_button": "Revoke consent",
+            "consent_privacy_button": "Privacy",
+            "consent_ads_button": "Ads",
+            "consent_first_alert": "Confirm consent first.",
+            "consent_accepted": "Consent saved.",
+            "consent_ready": "Now send a product name, photo, or voice message.",
+            "consent_declined": (
+                "Consent was not given. The bot will not process requests. Confirm consent "
+                "to continue."
+            ),
+            "consent_revoked": (
+                "Consent revoked. The bot will not process requests. Confirm consent again "
+                "to continue."
+            ),
+            "consent_status_active": (
+                "Consent is active. If you revoke it, the bot will stop processing search "
+                "requests."
+            ),
+            "consent_save_failed": (
+                "Could not save consent. The server is temporarily unavailable, try again later."
             ),
         },
         product_labels={
