@@ -10,6 +10,8 @@ if __package__ in {None, ""}:
 from bot.config import load_config
 from bot.loader import create_bot, create_dispatcher
 from bot.services.ai_monitor import monitor_openai_balance
+from bot.services.api_client import ServerAPIClient, ServerAPIError
+from bot.services.language_store import language_preferences
 
 
 async def main() -> None:
@@ -24,6 +26,17 @@ async def main() -> None:
 
     bot = create_bot(config.bot)
     dispatcher = create_dispatcher(config)
+
+    if config.bot_api_key:
+        try:
+            async with ServerAPIClient(
+                config.server_api_base_url,
+                config.bot_api_key,
+                timeout=config.server_api_timeout,
+            ) as client:
+                await language_preferences.preload(client)
+        except ServerAPIError as error:
+            logging.getLogger(__name__).warning("Language preferences preload failed: %s", error)
 
     await bot.delete_webhook(drop_pending_updates=True)
     monitor_task = asyncio.create_task(monitor_openai_balance(bot, config))

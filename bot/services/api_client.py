@@ -108,6 +108,31 @@ class ServerAPIClient:
     async def get_product(self, product_id: int) -> ProductDTO:
         return _parse_product(await self._get(f"/v1/products/{product_id}/"))
 
+    async def load_language_preferences(self) -> dict[int, str]:
+        data = await self._get("/v1/user-preferences/languages/")
+        rows = data if isinstance(data, list) else []
+        preferences: dict[int, str] = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            try:
+                user_id = int(row["telegram_user_id"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            language_code = str(row.get("language_code") or "").strip()
+            if language_code:
+                preferences[user_id] = language_code
+        return preferences
+
+    async def set_language_preference(self, telegram_user_id: int, language_code: str) -> str:
+        data = await self._post(
+            f"/v1/user-preferences/languages/{telegram_user_id}/",
+            payload={"language_code": language_code},
+        )
+        if isinstance(data, dict):
+            return str(data.get("language_code") or language_code)
+        return language_code
+
     async def _get(
         self,
         path: str,

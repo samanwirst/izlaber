@@ -19,6 +19,7 @@ async def setup_bot_profile(bot: Bot) -> list[str]:
         commands = [
             BotCommand(command="start", description=locale.command_descriptions["start"]),
             BotCommand(command="help", description=locale.command_descriptions["help"]),
+            BotCommand(command="lang", description=locale.command_descriptions["lang"]),
         ]
         bot_name = locale.bot_name
         short_description = locale.short_description

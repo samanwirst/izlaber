@@ -1,17 +1,20 @@
 from django.db.models import Case, IntegerField, Q, When
-from rest_framework import mixins, viewsets
+from django.shortcuts import get_object_or_404
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.api_auth.authentication import BotAPIKeyAuthentication
-from apps.catalog.models import Category, Marketplace, Product
+from apps.catalog.models import Category, Marketplace, Product, UserPreference
 from apps.catalog.search import query_price_filters, search_product_ids
 from apps.catalog.serializers import (
     CategorySerializer,
     MarketplaceSerializer,
     ProductCardSerializer,
     ProductSerializer,
+    UserPreferenceSerializer,
 )
 from apps.catalog.visual import visual_search_product_ids
 from apps.catalog.visual_index import index_product_cover_rows, visual_index_queryset
@@ -205,6 +208,35 @@ class ProductViewSet(
         )
 
 
+class UserPreferenceListView(APIView):
+    authentication_classes = (BotAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, _request):
+        queryset = UserPreference.objects.all().order_by("telegram_user_id")
+        serializer = UserPreferenceSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+
+class UserPreferenceDetailView(APIView):
+    authentication_classes = (BotAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, _request, telegram_user_id: str):
+        preference = get_object_or_404(UserPreference, telegram_user_id=telegram_user_id)
+        serializer = UserPreferenceSerializer(preference)
+        return Response(serializer.data)
+
+    def post(self, request, telegram_user_id: str):
+        language_code = _normalize_language_code(str(request.data.get("language_code") or ""))
+        preference, _ = UserPreference.objects.update_or_create(
+            telegram_user_id=telegram_user_id,
+            defaults={"language_code": language_code},
+        )
+        serializer = UserPreferenceSerializer(preference)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
 def _pagination_window(params) -> tuple[int, int]:
     limit = _positive_int(params.get("limit"), default=20)
     offset = _positive_int(params.get("offset"), default=0)
@@ -225,6 +257,11 @@ def _positive_float(value, *, default: float) -> float:
     except (TypeError, ValueError):
         return default
     return max(parsed, 0.0)
+
+
+def _normalize_language_code(language_code: str) -> str:
+    base_code = language_code.casefold().replace("_", "-").split("-", maxsplit=1)[0]
+    return base_code if base_code in {"uz", "ru", "en"} else "uz"
 
 
 def _int_list(value) -> list[int]:

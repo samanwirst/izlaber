@@ -203,14 +203,21 @@ async def search_more(message: Message, config: Config) -> None:
         )
         return
 
+    status_message = await message.answer(format_message("search_more_processing", language))
     products = await _next_products(session=session, config=config, message=message)
     if products is None:
+        await _replace_status_message(
+            status_message,
+            format_message("catalog_unavailable", language),
+            language=language,
+        )
         return
     if not products:
         search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
-        await message.answer(
+        await _replace_status_message(
+            status_message,
             format_message("no_more", language, query=session.query),
-            reply_markup=main_menu_keyboard(language),
+            language=language,
         )
         return
 
@@ -221,6 +228,11 @@ async def search_more(message: Message, config: Config) -> None:
         products=session.products,
         offset=session.offset + len(products),
         candidate_offset=session.candidate_offset,
+    )
+    await _replace_status_message(
+        status_message,
+        format_message("found_intro", language, query=session.query, count=len(products)),
+        language=language,
     )
     await _send_products(message, products, start_index=session.offset + 1, language_code=language)
 
@@ -250,6 +262,7 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
         )
         return
 
+    status_message = await message.answer(format_message("photo_processing", language))
     if _photo_search_available(config):
         await message.bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
         photo_query = await identify_product_photo(
@@ -269,9 +282,10 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
                 return
             if not ranked_products:
                 search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
-                await message.answer(
+                await _replace_status_message(
+                    status_message,
                     format_message("photo_no_results", language, query=photo_query.query),
-                    reply_markup=main_menu_keyboard(language),
+                    language=language,
                 )
                 return
 
@@ -284,22 +298,24 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
                 offset=len(products),
                 candidate_offset=-1,
             )
-            await message.answer(
+            await _replace_status_message(
+                status_message,
                 format_message(
                     "photo_found_intro",
                     language,
                     query=used_query,
                     count=len(products),
                 ),
-                reply_markup=more_results_keyboard(language),
+                language=language,
             )
             await _send_products(message, products, start_index=1, language_code=language)
             return
 
         if not ai_runtime_state.ai_allowed():
-            await message.answer(
+            await _replace_status_message(
+                status_message,
                 format_message("photo_ai_unavailable", language),
-                reply_markup=main_menu_keyboard(language),
+                language=language,
             )
             return
 
@@ -320,17 +336,19 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
             offset=len(products),
             candidate_offset=-1,
         )
-        await message.answer(
+        await _replace_status_message(
+            status_message,
             format_message("photo_visual_found_intro", language, count=len(products)),
-            reply_markup=more_results_keyboard(language),
+            language=language,
         )
         await _send_products(message, products, start_index=1, language_code=language)
         return
 
     search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
-    await message.answer(
+    await _replace_status_message(
+        status_message,
         format_message("photo_visual_no_results", language),
-        reply_markup=main_menu_keyboard(language),
+        language=language,
     )
 
 
@@ -364,21 +382,24 @@ async def search_uzum_by_voice(message: Message, config: Config) -> None:
         )
         return
 
+    status_message = await message.answer(format_message("voice_processing", language))
     audio_bytes = await _download_telegram_file_bytes(
         message=message,
         file_id=voice.file_id,
         timeout_seconds=config.openai_voice_timeout,
     )
     if audio_bytes is None:
-        await message.answer(
+        await _replace_status_message(
+            status_message,
             format_message("voice_download_failed", language),
-            reply_markup=main_menu_keyboard(language),
+            language=language,
         )
         return
     if len(audio_bytes) > config.openai_voice_max_download_bytes:
-        await message.answer(
+        await _replace_status_message(
+            status_message,
             format_message("voice_too_large", language),
-            reply_markup=main_menu_keyboard(language),
+            language=language,
         )
         return
 
@@ -395,9 +416,10 @@ async def search_uzum_by_voice(message: Message, config: Config) -> None:
             if not ai_runtime_state.ai_allowed()
             else "voice_transcription_failed"
         )
-        await message.answer(
+        await _replace_status_message(
+            status_message,
             format_message(message_key, language),
-            reply_markup=main_menu_keyboard(language),
+            language=language,
         )
         return
 
@@ -405,6 +427,7 @@ async def search_uzum_by_voice(message: Message, config: Config) -> None:
         message=message,
         config=config,
         query=transcript,
+        status_message=status_message,
         empty_key="voice_transcription_failed",
         no_results_key="no_results",
         intro_key="voice_found_intro",
@@ -414,7 +437,14 @@ async def search_uzum_by_voice(message: Message, config: Config) -> None:
 @router.message(F.text)
 async def search_uzum(message: Message, config: Config) -> None:
     query = (message.text or "").strip()
-    await _run_text_search(message=message, config=config, query=query)
+    language = language_from_message(message)
+    status_message = await message.answer(format_message("search_processing", language))
+    await _run_text_search(
+        message=message,
+        config=config,
+        query=query,
+        status_message=status_message,
+    )
 
 
 async def _next_products(
@@ -532,6 +562,7 @@ async def _run_text_search(
     message: Message,
     config: Config,
     query: str,
+    status_message: Message | None = None,
     empty_key: str = "empty_query",
     no_results_key: str = "no_results",
     intro_key: str = "found_intro",
@@ -539,10 +570,17 @@ async def _run_text_search(
     language = language_from_message(message)
     query = " ".join(query.split())
     if not query:
-        await message.answer(
-            format_message(empty_key, language),
-            reply_markup=main_menu_keyboard(language),
-        )
+        if status_message is not None:
+            await _replace_status_message(
+                status_message,
+                format_message(empty_key, language),
+                language=language,
+            )
+        else:
+            await message.answer(
+                format_message(empty_key, language),
+                reply_markup=main_menu_keyboard(language),
+            )
         return
 
     ranked_products = await _load_ranked_candidates(
@@ -556,10 +594,17 @@ async def _run_text_search(
         return
     if not ranked_products:
         search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
-        await message.answer(
-            format_message(no_results_key, language, query=query),
-            reply_markup=main_menu_keyboard(language),
-        )
+        if status_message is not None:
+            await _replace_status_message(
+                status_message,
+                format_message(no_results_key, language, query=query),
+                language=language,
+            )
+        else:
+            await message.answer(
+                format_message(no_results_key, language, query=query),
+                reply_markup=main_menu_keyboard(language),
+            )
         return
 
     products = ranked_products[: config.product_search_limit]
@@ -571,10 +616,17 @@ async def _run_text_search(
         offset=len(products),
         candidate_offset=len(ranked_products),
     )
-    await message.answer(
-        format_message(intro_key, language, query=query, count=len(products)),
-        reply_markup=more_results_keyboard(language),
-    )
+    if status_message is not None:
+        await _replace_status_message(
+            status_message,
+            format_message(intro_key, language, query=query, count=len(products)),
+            language=language,
+        )
+    else:
+        await message.answer(
+            format_message(intro_key, language, query=query, count=len(products)),
+            reply_markup=more_results_keyboard(language),
+        )
     await _send_products(message, products, start_index=1, language_code=language)
 
 
@@ -790,6 +842,25 @@ def _search_expansion_allowed(*, config: Config, candidate_offset: int) -> bool:
         and config.openai_rerank_enabled
         and config.openai_api_key
     )
+
+
+async def _replace_status_message(
+    message: Message,
+    text: str,
+    *,
+    language: str,
+) -> None:
+    try:
+        await message.edit_text(
+            text,
+            disable_web_page_preview=True,
+        )
+    except TelegramBadRequest:
+        await message.answer(
+            text,
+            reply_markup=main_menu_keyboard(language),
+            disable_web_page_preview=True,
+        )
 
 
 def _photo_search_available(config: Config) -> bool:

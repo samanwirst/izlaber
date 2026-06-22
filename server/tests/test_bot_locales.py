@@ -1,12 +1,17 @@
+from aiogram.types import ReplyKeyboardRemove
+
+from bot.keyboards.language import language_selection_keyboard
 from bot.keyboards.main_menu import is_more_button_text, main_menu_keyboard, more_results_keyboard
 from bot.locales import (
     LOCALES,
     PROFILE_LANGUAGE_CODES,
+    language_from_message,
     locale_for,
     normalize_language_code,
     product_noun,
     review_text,
 )
+from bot.services.language_store import language_preferences
 
 
 def test_language_code_normalization_uses_uzbek_fallback():
@@ -23,26 +28,53 @@ def test_profile_texts_match_telegram_limits():
         assert len(locale.bot_name) <= 64
         assert len(locale.short_description) <= 120
         assert len(locale.description) <= 512
-        assert set(locale.command_descriptions) == {"start", "help"}
+        assert set(locale.command_descriptions) == {"start", "help", "lang"}
         for command_description in locale.command_descriptions.values():
             assert 1 <= len(command_description) <= 256
 
 
 def test_more_button_accepts_all_localized_values():
     assert is_more_button_text("Yana")
+    assert is_more_button_text("yana")
     assert is_more_button_text(" еще ")
+    assert is_more_button_text("ещё")
     assert is_more_button_text("MORE")
+    assert is_more_button_text("more")
     assert not is_more_button_text("iphone")
+    assert not is_more_button_text("ещё, пожалуйста")
 
 
 def test_keyboards_are_localized():
     uz_keyboard = more_results_keyboard("uz")
     ru_keyboard = more_results_keyboard("ru")
     en_keyboard = main_menu_keyboard("en")
+    language_keyboard = language_selection_keyboard()
 
     assert uz_keyboard.keyboard[0][0].text == "Yana"
     assert ru_keyboard.keyboard[0][0].text == "Еще"
-    assert en_keyboard.input_field_placeholder == "Type a product to search"
+    assert isinstance(en_keyboard, ReplyKeyboardRemove)
+    assert [button.text for button in language_keyboard.inline_keyboard[0]] == [
+        "O'zbek",
+        "Русский",
+        "English",
+    ]
+
+
+def test_language_override_takes_precedence_over_telegram_locale():
+    class User:
+        id = 123
+        language_code = "en"
+
+    class Message:
+        from_user = User()
+
+    language_preferences.clear_cached(123)
+    try:
+        assert language_from_message(Message()) == "en"
+        language_preferences.set_cached(123, "ru")
+        assert language_from_message(Message()) == "ru"
+    finally:
+        language_preferences.clear_cached(123)
 
 
 def test_product_copy_pluralization():

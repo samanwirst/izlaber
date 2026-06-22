@@ -197,3 +197,14 @@ class ProductSearchTerm(models.Model):
                 name="unique_product_search_term",
             )
         ]
+
+
+class UserPreference(TimestampedModel):
+    telegram_user_id = models.BigIntegerField(unique=True, db_index=True)
+    language_code = models.SlugField(max_length=8, default="uz")
+
+    class Meta:
+        ordering = ("telegram_user_id",)
+
+    def __str__(self) -> str:
+        return f"{self.telegram_user_id}: {self.language_code}"

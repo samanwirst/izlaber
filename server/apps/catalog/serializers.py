@@ -1,6 +1,13 @@
 from rest_framework import serializers
 
-from apps.catalog.models import Category, Marketplace, Product, ProductSnapshot, Seller
+from apps.catalog.models import (
+    Category,
+    Marketplace,
+    Product,
+    ProductSnapshot,
+    Seller,
+    UserPreference,
+)
 
 
 class MarketplaceSerializer(serializers.ModelSerializer):
@@ -102,3 +109,9 @@ class ProductSnapshotSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductSnapshot
         fields = "__all__"
+
+
+class UserPreferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserPreference
+        fields = ("telegram_user_id", "language_code", "created_at", "updated_at")

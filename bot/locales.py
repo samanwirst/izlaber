@@ -31,26 +31,26 @@ LOCALES: dict[str, LocaleCopy] = {
         code="uz",
         bot_name="Izlaber",
         short_description=(
-            "Uzum Market qidiruvi: nom yoki foto yuboring, bot 5 ta mos kartochkani "
+            "Mahsulot qidiruvi: nom, foto yoki ovoz yuboring, bot 5 ta mos kartochkani "
             "topadi."
         ),
         description=(
-            "Uzum Market'dan kerakli mahsulotni tez toping. Mahsulot nomini, ovozli xabarni yoki "
+            "Kerakli mahsulotni tez toping. Mahsulot nomini, ovozli xabarni yoki "
             "fotosini yuboring - bot katalogdan mos kartochkalarni narx, reyting, rasm "
             "va havola bilan topadi. «Yana» tugmasi keyingi 5 ta natijani ko'rsatadi. "
-            "Matnli qidiruv tez ishlaydi, foto va murakkab so'rovlarda AI yordam beradi."
+            "Matnli qidiruv tez ishlaydi, foto va murakkab so'rovlarda qo'shimcha "
+            "moslashtirish ishlatiladi."
         ),
         command_descriptions={
             "start": "Botni ishga tushirish va qidiruvni boshlash",
             "help": "Qidiruv bo'yicha yordam va misollar",
+            "lang": "Tilni tanlash",
         },
         start_text=(
-            "Assalomu alaykum! Men Uzum Market bo'yicha mahsulot topishga yordam "
-            "beraman.\n\n"
+            "Assalomu alaykum! Sizga kerakli mahsulotni topishga yordam beraman.\n\n"
             "Mahsulot nomini yozing, ovozli xabar yuboring yoki fotosini yuboring - masalan: "
             "<b>oq krossovka 300 minggacha</b> yoki <b>v yoqali sviter</b>.\n\n"
-            "Men 5 ta mos kartochka yuboraman. Keyingilarini ko'rish uchun "
-            "<b>Yana</b> tugmasini bosing."
+            "Men 5 ta mos kartochka yuboraman. Tilni o'zgartirish uchun /lang yozing."
         ),
         help_text=(
             "<b>Qanday ishlaydi</b>\n"
@@ -58,7 +58,8 @@ LOCALES: dict[str, LocaleCopy] = {
             "2. Yoki ovozli xabar yuboring - bot uni matnga aylantiradi.\n"
             "3. Yoki mahsulot fotosini yuboring - bot uni qidiruv so'roviga aylantiradi.\n"
             "4. Bot 5 ta mos kartochka yuboradi.\n"
-            "5. <b>Yana</b> tugmasi keyingi 5 ta natijani ko'rsatadi.\n\n"
+            "5. <b>Yana</b> tugmasi keyingi 5 ta natijani ko'rsatadi.\n"
+            "6. Tilni almashtirish uchun /lang yozing.\n\n"
             "<b>Misollar</b>\n"
             "<code>iphone</code>\n"
             "<code>oq krossovka 300 minggacha</code>\n"
@@ -79,7 +80,7 @@ LOCALES: dict[str, LocaleCopy] = {
                 "«{query}» bo'yicha kartochkalar topildi. Birinchi {count} ta natija:"
             ),
             "catalog_unavailable": "Katalog hozir ishlamayapti. Keyinroq urinib ko'ring.",
-            "guest_need_query_title": "Uzum'da nima qidiramiz?",
+            "guest_need_query_title": "Nimani qidiramiz?",
             "guest_need_query_text": (
                 "Bot nomi yoniga mahsulot yozing, masalan: @bot iphone 15."
             ),
@@ -88,10 +89,18 @@ LOCALES: dict[str, LocaleCopy] = {
                 "Hozir katalogdan mahsulot olib bo'lmadi. Keyinroq urinib ko'ring."
             ),
             "guest_empty_title": "Topilmadi: {query}",
-            "guest_top_title": "Top-{count} Uzum'da: {query}",
+            "guest_top_title": "Top-{count}: {query}",
             "guest_empty_description": "Katalogda mos mahsulot topilmadi.",
             "guest_results_header": "«{query}» bo'yicha {count} ta mahsulot topildi:",
             "guest_no_results": "Katalogda <b>{query}</b> bo'yicha mahsulot topilmadi.",
+            "language_prompt": (
+                "Tilni tanlang. Choose a language. Выберите язык."
+            ),
+            "language_changed": "Til yangilandi: <b>{language}</b>.",
+            "search_processing": "Eng yaxshi variantlarni tanlayapman...",
+            "search_more_processing": "Yana variantlarni qidiryapman...",
+            "photo_processing": "Rasmga qarayapman va mos variantlarni qidiryapman...",
+            "voice_processing": "Ovozli xabarni tinglayapman...",
             "photo_ai_unavailable": (
                 "Foto orqali qidiruv hozir ishlamayapti. Mahsulot nomini matn bilan yozing."
             ),
@@ -155,26 +164,27 @@ LOCALES: dict[str, LocaleCopy] = {
         code="ru",
         bot_name="Izlaber",
         short_description=(
-            "Поиск по Uzum Market: напишите товар или отправьте фото, бот найдет 5 карточек."
+            "Поиск товаров: напишите товар или отправьте фото, бот найдет 5 карточек."
         ),
         description=(
-            "Быстро находите товары на Uzum Market. Напишите название или признаки "
+            "Быстро находите товары. Напишите название или признаки "
             "товара, отправьте голосовое сообщение либо фото - бот покажет карточки с "
             "ценой, рейтингом, "
             "обложкой и ссылкой. Кнопка «Еще» отправляет следующие 5 результатов. "
-            "Текстовый поиск быстрый, для фото и сложных запросов подключается AI."
+            "Текстовый поиск быстрый, для фото и сложных запросов подключается "
+            "дополнительная обработка."
         ),
         command_descriptions={
             "start": "Запустить бота и начать поиск",
             "help": "Помощь по поиску и примеры запросов",
+            "lang": "Выбрать язык",
         },
         start_text=(
-            "Здравствуйте! Я помогаю находить товары на Uzum Market.\n\n"
+            "Здравствуйте! Я помогу найти нужный товар.\n\n"
             "Напишите название или признаки товара, отправьте голосовое сообщение "
             "либо фото - например: "
             "<b>белые кроссовки до 300 тысяч</b> или <b>свитер v вырез</b>.\n\n"
-            "Я отправлю 5 подходящих карточек. Чтобы увидеть следующие, нажмите "
-            "<b>Еще</b>."
+            "Я отправлю 5 подходящих карточек. Чтобы сменить язык, напишите /lang."
         ),
         help_text=(
             "<b>Как это работает</b>\n"
@@ -182,7 +192,8 @@ LOCALES: dict[str, LocaleCopy] = {
             "2. Или отправьте голосовое сообщение - бот переведет его в текст.\n"
             "3. Или отправьте фото товара - бот превратит его в поисковый запрос.\n"
             "4. Бот отправит 5 подходящих карточек.\n"
-            "5. Кнопка <b>Еще</b> покажет следующие 5 результатов по этому же запросу.\n\n"
+            "5. Кнопка <b>Еще</b> покажет следующие 5 результатов по этому же запросу.\n"
+            "6. Для смены языка напишите /lang.\n\n"
             "<b>Примеры</b>\n"
             "<code>iphone</code>\n"
             "<code>белые кроссовки до 300 тысяч</code>\n"
@@ -201,7 +212,7 @@ LOCALES: dict[str, LocaleCopy] = {
             "no_results": "В каталоге пока нет товаров по запросу «{query}».",
             "found_intro": "Нашел карточки по запросу «{query}». Показываю первые {count}:",
             "catalog_unavailable": "Каталог сейчас недоступен. Попробуйте позже.",
-            "guest_need_query_title": "Что искать на Uzum?",
+            "guest_need_query_title": "Что искать?",
             "guest_need_query_text": (
                 "Напишите товар рядом с упоминанием бота, например: @bot iphone 15."
             ),
@@ -210,10 +221,16 @@ LOCALES: dict[str, LocaleCopy] = {
                 "Не смог получить товары из каталога. Попробуйте повторить запрос позже."
             ),
             "guest_empty_title": "Ничего не найдено: {query}",
-            "guest_top_title": "Топ-{count} на Uzum: {query}",
+            "guest_top_title": "Топ-{count}: {query}",
             "guest_empty_description": "В каталоге нет подходящих товаров.",
             "guest_results_header": "Нашел {count} {noun} по запросу <b>{query}</b>:",
             "guest_no_results": "В каталоге пока нет товаров по запросу <b>{query}</b>.",
+            "language_prompt": "Выберите язык. Tilni tanlang. Choose a language.",
+            "language_changed": "Язык обновлен: <b>{language}</b>.",
+            "search_processing": "Выбираю лучшие варианты...",
+            "search_more_processing": "Ищу еще варианты...",
+            "photo_processing": "Смотрю фото и ищу похожие товары...",
+            "voice_processing": "Распознаю голосовое сообщение...",
             "photo_ai_unavailable": (
                 "Поиск по фото сейчас недоступен. Напишите название товара текстом."
             ),
@@ -280,26 +297,26 @@ LOCALES: dict[str, LocaleCopy] = {
         code="en",
         bot_name="Izlaber",
         short_description=(
-            "Search Uzum Market by product name, voice, or photo and get 5 relevant product cards."
+            "Search products by name, voice, or photo and get 5 relevant product cards."
         ),
         description=(
-            "Find products on Uzum Market faster. Send a product name, a voice message, "
+            "Find products faster. Send a product name, a voice message, "
             "details, or a photo, "
             "and the bot returns cards with price, rating, cover image, and link. Tap “More” "
-            "to see the next 5 results. Text search is fast; AI helps with photos and "
-            "harder queries."
+            "to see the next 5 results. Text search is fast; photos and harder queries use "
+            "additional matching."
         ),
         command_descriptions={
             "start": "Start the bot and search products",
             "help": "Search help and example queries",
+            "lang": "Choose language",
         },
         start_text=(
-            "Hi! I help you find products on Uzum Market.\n\n"
+            "Hi! I can help you find the right product.\n\n"
             "Send a product name, a voice message, details, or a photo - for example: "
             "<b>white sneakers "
             "under 300k</b> or <b>v neck sweater</b>.\n\n"
-            "I will send 5 relevant product cards. Tap <b>More</b> to see the next "
-            "results."
+            "I will send 5 relevant product cards. To switch language, send /lang."
         ),
         help_text=(
             "<b>How it works</b>\n"
@@ -307,7 +324,8 @@ LOCALES: dict[str, LocaleCopy] = {
             "2. Or send a voice message - the bot turns it into text.\n"
             "3. Or send a product photo - the bot turns it into a search query.\n"
             "4. The bot returns 5 relevant product cards.\n"
-            "5. The <b>More</b> button shows the next 5 results for the same query.\n\n"
+            "5. The <b>More</b> button shows the next 5 results for the same query.\n"
+            "6. To change language, send /lang.\n\n"
             "<b>Examples</b>\n"
             "<code>iphone</code>\n"
             "<code>white sneakers under 300k</code>\n"
@@ -325,7 +343,7 @@ LOCALES: dict[str, LocaleCopy] = {
             "no_results": "No products found in the catalog for “{query}”.",
             "found_intro": "Found product cards for “{query}”. Showing the first {count}:",
             "catalog_unavailable": "The catalog is unavailable right now. Try again later.",
-            "guest_need_query_title": "What should I search on Uzum?",
+            "guest_need_query_title": "What should I search?",
             "guest_need_query_text": (
                 "Write a product next to the bot mention, for example: @bot iphone 15."
             ),
@@ -334,10 +352,16 @@ LOCALES: dict[str, LocaleCopy] = {
                 "Could not load products from the catalog. Try again later."
             ),
             "guest_empty_title": "Nothing found: {query}",
-            "guest_top_title": "Top-{count} on Uzum: {query}",
+            "guest_top_title": "Top-{count}: {query}",
             "guest_empty_description": "No matching products in the catalog.",
             "guest_results_header": "Found {count} {noun} for <b>{query}</b>:",
             "guest_no_results": "No products found in the catalog for <b>{query}</b>.",
+            "language_prompt": "Choose a language. Tilni tanlang. Выберите язык.",
+            "language_changed": "Language updated: <b>{language}</b>.",
+            "search_processing": "Picking the best matches...",
+            "search_more_processing": "Looking for more matches...",
+            "photo_processing": "Checking the photo and finding similar products...",
+            "voice_processing": "Transcribing the voice message...",
             "photo_ai_unavailable": (
                 "Photo search is unavailable right now. Type the product name instead."
             ),
@@ -412,6 +436,13 @@ def normalize_language_code(language_code: str | None) -> str:
 
 def language_from_message(message: Any) -> str:
     user = getattr(message, "from_user", None)
+    user_id = getattr(user, "id", None)
+    if user_id is not None:
+        from bot.services.language_store import language_preferences
+
+        stored_language = language_preferences.get(user_id)
+        if stored_language is not None:
+            return stored_language
     return normalize_language_code(getattr(user, "language_code", None))
 
 
@@ -426,7 +457,19 @@ def profile_locale_for(language_code: str | None) -> LocaleCopy:
 
 
 def more_button_values() -> set[str]:
-    return {locale.more_button.casefold() for locale in LOCALES.values()}
+    return {
+        _normalize_more_button_text(locale.more_button)
+        for locale in LOCALES.values()
+    } | {
+        "more",
+        "yana",
+        "еще",
+        "ещё",
+    }
+
+
+def _normalize_more_button_text(text: str) -> str:
+    return text.strip().casefold().replace("ё", "е")
 
 
 def format_message(
