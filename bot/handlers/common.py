@@ -1229,6 +1229,8 @@ async def _load_photo_ranked_candidates(
                 if len(products) >= config.openai_photo_candidate_limit:
                     break
             if not products:
+                if _photo_brand_tokens(photo_query.brand):
+                    return used_query, [], "none"
                 substitute_query, substitute_products = await _load_photo_substitute_products(
                     client=client,
                     photo_query=photo_query,
@@ -1250,22 +1252,6 @@ async def _load_photo_ranked_candidates(
         return used_query, [], "none"
     exact_products = _photo_exact_candidate_products(photo_query=photo_query, products=products)
     if _photo_brand_tokens(photo_query.brand) and not exact_products:
-        try:
-            async with ServerAPIClient(
-                config.server_api_base_url,
-                config.bot_api_key,
-                timeout=config.server_api_timeout,
-            ) as client:
-                substitute_query, substitute_products = await _load_photo_substitute_products(
-                    client=client,
-                    photo_query=photo_query,
-                    config=config,
-                )
-        except ServerAPIError as error:
-            logger.warning("Photo substitute search failed for %r: %s", photo_query.query, error)
-            substitute_query, substitute_products = used_query, []
-        if substitute_products:
-            return substitute_query, substitute_products, "substitute"
         return used_query, [], "none"
     if exact_products:
         products = exact_products
@@ -1299,6 +1285,8 @@ async def _load_photo_ranked_candidates(
     )
     if safe_text_fallback:
         return used_query, safe_text_fallback, "text"
+    if _photo_brand_tokens(photo_query.brand):
+        return used_query, [], "none"
     try:
         async with ServerAPIClient(
             config.server_api_base_url,

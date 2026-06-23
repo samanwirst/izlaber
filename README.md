@@ -70,7 +70,7 @@ Bot search flow:
 - Implementation notes and legal-source links are in `docs/consent.md`.
 - User sends a product name.
 - User can also send a product photo; the bot uses a visual matching pipeline to find similar product cards.
-- If a packaged snack/drink photo has a visible brand but no exact active match, the bot can show clearly labeled same-type substitutes. It does not silently turn failed visual matches into generic homonym results.
+- If a packaged snack/drink photo has a visible brand but no exact active match, the bot returns no result instead of showing generic same-type substitutes.
 - Photo search adds compact multilingual aliases for packaged goods so Uzbek/Russian/English catalog titles can match without another AI call. If a visible brand is detected, text fallback requires that brand in the candidate card.
 - Bot detects the user's Telegram app language and answers in Uzbek, Russian, or English.
 - Bot sends 10 product cards with cover, price, rating, and link.
@@ -133,7 +133,7 @@ Optional rerank:
 - `PHOTO_VISUAL_MATCH_ENABLED=true` is still useful as a cheap exact-cover fallback when the model is unavailable.
 - Build or refresh cover fingerprints after migration or large imports with `./scripts/rebuild_product_visual_index.sh --marketplace uzum`. Exact cover matching can only match products whose covers are indexed.
 - For a targeted repair/check use `./scripts/rebuild_product_visual_index.sh --marketplace uzum --source-product-id 2797446`.
-- `OPENAI_PHOTO_TEXT_FALLBACK_ENABLED=false` by default, so weak text-only photo matches are not sent when visual rerank finds no close match. When enabled, fallback still requires a safe packaged-goods type and visible-brand matches unless it is explicitly showing labeled substitutes.
+- `OPENAI_PHOTO_TEXT_FALLBACK_ENABLED=false` by default, so weak text-only photo matches are not sent when visual rerank finds no close match. When enabled, fallback still requires a safe packaged-goods type; visible-brand photos require visible-brand matches.
 - Tune exact photo matching with `PHOTO_VISUAL_MATCH_MAX_DISTANCE`; lower values are stricter.
 - If fallback-only mode is disabled, the bot fetches `OPENAI_RERANK_CANDIDATE_LIMIT` indexed candidates, then asks the configured OpenAI model to reorder only those candidates.
 - If the indexed candidates look irrelevant or too sparse, the model can generate up to `OPENAI_SEARCH_EXPAND_MAX_QUERIES` extra search queries with optional price filters, then the bot fetches more candidates and reranks the merged pool.

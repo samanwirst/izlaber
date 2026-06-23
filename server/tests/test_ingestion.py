@@ -2,6 +2,7 @@ from apps.catalog import search as catalog_search
 from apps.catalog.models import Product, ProductSearchTerm, ProductSnapshot
 from apps.catalog.search import (
     product_search_terms,
+    protected_query_term_groups,
     query_price_filters,
     query_terms,
     search_product_ids,
@@ -94,6 +95,42 @@ def test_search_query_skips_price_noise_and_extracts_price_filter():
     assert query_terms("кроссовки белые до 300 тысяч") == ["кроссовки", "белые"]
     assert query_price_filters("кроссовки белые до 300 тысяч") == (None, 300000)
     assert query_terms("компрессионка") == ["compressionwear"]
+
+
+def test_search_protects_latin_brand_in_mixed_query():
+    assert protected_query_term_groups("Snickers шоколадный батончик") == [
+        {"snickers", "сникерс"}
+    ]
+    assert protected_query_term_groups("white sneakers") == []
+
+
+def test_search_does_not_relax_away_latin_brand(db):
+    a4 = product_payload(source_product_id="a4", content_hash="hash-a4")
+    a4["title"] = "А4 Шоколадный батончик, 40 г"
+    upsert_products(marketplace_code="uzum", products=[a4])
+
+    assert (
+        search_product_ids(
+            "Snickers шоколадный батончик",
+            marketplace_code="uzum",
+            active_only=True,
+            limit=5,
+        )
+        == []
+    )
+
+    snickers = product_payload(source_product_id="snickers", content_hash="hash-snickers")
+    snickers["title"] = "Шоколадный батончик Snickers, 50 г"
+    upsert_products(marketplace_code="uzum", products=[snickers])
+
+    product_ids = search_product_ids(
+        "Snickers шоколадный батончик",
+        marketplace_code="uzum",
+        active_only=True,
+        limit=5,
+    )
+
+    assert product_ids == [Product.objects.get(source_product_id="snickers").id]
 
 
 def test_search_relaxes_extra_visual_details_without_losing_product_type(db):

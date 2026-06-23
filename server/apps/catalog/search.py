@@ -5,11 +5,12 @@ from collections.abc import Iterable
 from decimal import Decimal
 
 from django.db import connection
-from django.db.models import Count, Max, Sum
+from django.db.models import Count, Max, Q, Sum
 
 from apps.catalog.models import ProductSearchTerm
 
 TOKEN_RE = re.compile(r"[0-9a-zа-яё]+", re.IGNORECASE)
+LATIN_RE = re.compile(r"[a-z]", re.IGNORECASE)
 V_NECK_RE = re.compile(
     r"(?<![0-9a-zа-яё])v\s*[-–—]?\s*(?:образн\w*|вырез\w*)"
     r"|(?<![0-9a-zа-яё])v[-\s]?neck(?![0-9a-zа-яё])"
@@ -25,6 +26,8 @@ SOURCE_ID_WEIGHT = 1
 QUERY_SYNONYMS = {
     "айфон": {"айфон", "iphone"},
     "iphone": {"iphone", "айфон"},
+    "snickers": {"snickers", "сникерс"},
+    "сникерс": {"сникерс", "snickers"},
 }
 SWEATER_TOKENS = {
     "джемпер",
@@ -101,6 +104,29 @@ PHONE_ACCESSORY_TOKENS = {
     "стекло",
     "чехол",
     "чехлы",
+}
+COMMON_LATIN_DESCRIPTOR_TOKENS = {
+    "bar",
+    "black",
+    "blue",
+    "case",
+    "charger",
+    "chocolate",
+    "coffee",
+    "cover",
+    "cream",
+    "drink",
+    "green",
+    "mini",
+    "pink",
+    "plus",
+    "pro",
+    "red",
+    "shoes",
+    "sneakers",
+    "tea",
+    "water",
+    "white",
 }
 PRICE_STOP_TOKENS = {
     "до",
@@ -213,6 +239,7 @@ def search_product_ids(
     terms = query_terms(query)
     if not terms or limit <= 0:
         return []
+    required_term_groups = protected_query_term_groups(query)
 
     query_min_price, query_max_price = query_price_filters(query)
     min_price = _clean_price(min_price) or query_min_price
@@ -227,6 +254,7 @@ def search_product_ids(
             limit=limit,
             min_price=min_price,
             max_price=max_price,
+            required_term_groups=required_term_groups,
         )
         if rows:
             return rows
@@ -239,6 +267,7 @@ def search_product_ids(
             limit=limit,
             min_price=min_price,
             max_price=max_price,
+            required_term_groups=required_term_groups,
         )
         if rows:
             return rows
@@ -253,6 +282,7 @@ def search_product_ids(
             limit=limit,
             min_price=min_price,
             max_price=max_price,
+            required_term_groups=required_term_groups,
         )
 
     queryset = ProductSearchTerm.objects.filter(term__in=terms)
@@ -264,6 +294,7 @@ def search_product_ids(
         queryset = queryset.filter(product__current_price__gte=min_price)
     if max_price is not None:
         queryset = queryset.filter(product__current_price__lte=max_price)
+    queryset = _filter_queryset_by_required_groups(queryset, required_term_groups)
 
     required_terms = len(terms)
     rows = list(
@@ -314,6 +345,16 @@ def search_product_ids(
     )
 
 
+def _filter_queryset_by_required_groups(queryset, required_term_groups: list[set[str]]):
+    for group in required_term_groups:
+        group_filter = Q()
+        for term in sorted(group):
+            group_filter |= Q(product__search_text__icontains=term)
+        if group_filter:
+            queryset = queryset.filter(group_filter)
+    return queryset
+
+
 def query_terms(query: str) -> list[str]:
     tokens = tokenize(query)
     semantic = query_semantic_terms(query, tokens)
@@ -339,6 +380,30 @@ def query_terms(query: str) -> list[str]:
             if len(expanded) >= MAX_QUERY_TOKENS:
                 return expanded
     return expanded
+
+
+def protected_query_term_groups(query: str) -> list[set[str]]:
+    tokens = tokenize(query)
+    token_set = set(tokens)
+    has_latin = any(LATIN_RE.search(token) for token in token_set)
+    has_cyrillic = any(re.search(r"[а-яё]", token, re.IGNORECASE) for token in token_set)
+    if not has_latin or not has_cyrillic:
+        return []
+
+    groups: list[set[str]] = []
+    seen_groups: set[tuple[str, ...]] = set()
+    for token in tokens:
+        if not LATIN_RE.search(token) or token in COMMON_LATIN_DESCRIPTOR_TOKENS:
+            continue
+        group = {value for value in QUERY_SYNONYMS.get(token, {token}) if len(value) >= 3}
+        if not group:
+            continue
+        key = tuple(sorted(group))
+        if key in seen_groups:
+            continue
+        groups.append(group)
+        seen_groups.add(key)
+    return groups[:2]
 
 
 def query_price_filters(query: str) -> tuple[Decimal | None, Decimal | None]:
@@ -474,6 +539,7 @@ def _search_product_ids_postgres(
     limit: int,
     min_price: Decimal | None,
     max_price: Decimal | None,
+    required_term_groups: list[set[str]] | None = None,
 ) -> list[int]:
     tsquery = _tsquery(terms, operator=" & ")
     return _fetch_postgres_product_ids(
@@ -490,6 +556,7 @@ def _search_product_ids_postgres(
         limit=limit,
         min_price=min_price,
         max_price=max_price,
+        required_term_groups=required_term_groups,
     )
 
 
@@ -501,6 +568,7 @@ def _search_product_ids_postgres_trigram(
     limit: int,
     min_price: Decimal | None,
     max_price: Decimal | None,
+    required_term_groups: list[set[str]] | None = None,
 ) -> list[int]:
     return _fetch_postgres_product_ids(
         where_sql="p.search_text %% %s",
@@ -513,6 +581,7 @@ def _search_product_ids_postgres_trigram(
         limit=limit,
         min_price=min_price,
         max_price=max_price,
+        required_term_groups=required_term_groups,
     )
 
 
@@ -524,6 +593,7 @@ def _search_product_ids_postgres_relaxed(
     limit: int,
     min_price: Decimal | None,
     max_price: Decimal | None,
+    required_term_groups: list[set[str]] | None = None,
 ) -> list[int]:
     if len(terms) <= 1:
         return []
@@ -544,6 +614,7 @@ def _search_product_ids_postgres_relaxed(
                 limit=limit,
                 min_price=min_price,
                 max_price=max_price,
+                required_term_groups=required_term_groups,
             )
             if rows:
                 return rows
@@ -581,6 +652,7 @@ def _fetch_postgres_product_ids(
     limit: int,
     min_price: Decimal | None,
     max_price: Decimal | None,
+    required_term_groups: list[set[str]] | None = None,
 ) -> list[int]:
     where_clauses = [where_sql]
     params: list = []
@@ -597,6 +669,13 @@ def _fetch_postgres_product_ids(
     if max_price is not None:
         where_clauses.append("p.current_price <= %s")
         params.append(max_price)
+    for group in required_term_groups or []:
+        group_clauses = []
+        for term in sorted(group):
+            group_clauses.append("LOWER(p.search_text) LIKE %s")
+            params.append(f"%{term.lower()}%")
+        if group_clauses:
+            where_clauses.append(f"({' OR '.join(group_clauses)})")
 
     bounded_limit = min(max(limit, 1), MAX_POSTGRES_CANDIDATES)
     intent_order_sql = _postgres_intent_order_sql(query)
