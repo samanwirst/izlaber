@@ -97,11 +97,10 @@ def test_keyboards_are_localized():
     product_keyboard = product_card_keyboard(
         "en",
         product_url="https://example.com/product",
-        include_more=True,
     )
     assert product_keyboard.inline_keyboard[0][0].text == "Open product"
     assert product_keyboard.inline_keyboard[0][0].url == "https://example.com/product"
-    assert product_keyboard.inline_keyboard[1][0].text == "Show more"
+    assert len(product_keyboard.inline_keyboard) == 1
 
 
 def test_language_override_takes_precedence_over_telegram_locale():
