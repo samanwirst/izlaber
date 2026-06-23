@@ -28,6 +28,9 @@ class ProductDTO:
     category_path_text: str | None
     source_product_id: str | None = None
     tracking_url: str | None = None
+    sponsored_campaign_id: int | None = None
+    sponsored_campaign_name: str | None = None
+    sponsored_advertiser_name: str | None = None
 
 
 class ServerAPIClient:
@@ -85,6 +88,24 @@ class ServerAPIClient:
                 "active_only": True,
                 "max_distance": max_distance,
                 "limit": limit,
+            },
+        )
+        rows = _response_rows(data)
+        return [_parse_product(row) for row in rows[:limit]]
+
+    async def sponsored_products(
+        self,
+        *,
+        query: str,
+        language_code: str | None,
+        limit: int = 1,
+    ) -> list[ProductDTO]:
+        data = await self._get(
+            "/v1/sponsored-placements/",
+            params={
+                "q": query,
+                "language_code": language_code or "",
+                "limit": str(limit),
             },
         )
         rows = _response_rows(data)
@@ -237,17 +258,17 @@ def render_products(
         suffix = f" - {escape(', '.join(details))}" if details else ""
         product_url = product.tracking_url or product.canonical_url
         lines.append(
-            f'{index}. <a href="{escape(product_url)}">'
-            f"{escape(product.title)}</a>{suffix}"
+            f'{index}. <a href="{escape(product_url)}">{escape(product.title)}</a>{suffix}'
         )
     return "\n\n".join(lines)
 
 
 def render_product_card(product: ProductDTO, index: int, language_code: str | None = None) -> str:
     product_url = product.tracking_url or product.canonical_url
-    lines = [
-        f'<b>{index}. <a href="{escape(product_url)}">{escape(product.title)}</a></b>'
-    ]
+    lines = []
+    if product.sponsored_campaign_id is not None:
+        lines.append(f"<b>{escape(product_label('sponsored', language_code))}</b>")
+    lines.append(f'<b>{index}. <a href="{escape(product_url)}">{escape(product.title)}</a></b>')
     if product.current_price:
         price = escape(_format_price(product.current_price, product.currency, language_code))
         lines.append(f"{product_label('price', language_code)}: <b>{price}</b>")
@@ -282,6 +303,9 @@ def _parse_product(row: dict[str, Any]) -> ProductDTO:
         rating=row.get("rating"),
         reviews_count=row.get("reviews_count"),
         category_path_text=row.get("category_path_text"),
+        sponsored_campaign_id=_optional_int(row.get("sponsored_campaign_id")),
+        sponsored_campaign_name=row.get("sponsored_campaign_name"),
+        sponsored_advertiser_name=row.get("sponsored_advertiser_name"),
     )
 
 
@@ -305,6 +329,13 @@ def _response_rows(data: dict[str, Any] | list[dict[str, Any]]) -> list[dict[str
         return data
     rows = data.get("results", [])
     return rows if isinstance(rows, list) else []
+
+
+def _optional_int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _format_price(value: str, currency: str, language_code: str | None = None) -> str:

@@ -7,6 +7,7 @@ from apps.catalog.models import (
     Product,
     ProductSnapshot,
     Seller,
+    SponsoredCampaign,
     UserConsent,
 )
 
@@ -69,6 +70,29 @@ class UserConsentAdmin(admin.ModelAdmin):
     )
     search_fields = ("=telegram_user_id", "consent_version")
     list_filter = ("consent_version", "language_code", "source", "revoked_at")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(SponsoredCampaign)
+class SponsoredCampaignAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "advertiser_name",
+        "product",
+        "status",
+        "priority",
+        "starts_at",
+        "ends_at",
+        "updated_at",
+    )
+    search_fields = (
+        "name",
+        "advertiser_name",
+        "product__title",
+        "product__source_product_id",
+    )
+    list_filter = ("status", "starts_at", "ends_at")
+    autocomplete_fields = ("product",)
     readonly_fields = ("created_at", "updated_at")
 
 

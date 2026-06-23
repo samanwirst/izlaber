@@ -78,9 +78,8 @@ LOCALES: dict[str, LocaleCopy] = {
                 "Aniq mos keladigan mahsulot topilmadi. So'rovni soddaroq yozing, boshqa "
                 "foto yuboring yoki brend, rang, o'lcham yoxud kategoriyani ko'rsating."
             ),
-            "found_intro": (
-                "«{query}» bo'yicha kartochkalar topildi. Birinchi {count} ta natija:"
-            ),
+            "found_intro": ("«{query}» bo'yicha kartochkalar topildi. Birinchi {count} ta natija:"),
+            "sponsored_found_intro": "Reklama taklifi. U odatiy natijalardan alohida ko'rsatiladi:",
             "catalog_unavailable": "Katalog hozir ishlamayapti. Keyinroq urinib ko'ring.",
             "rate_limited": (
                 "Juda ko'p so'rov yubordingiz. Iltimos, {retry_after}dan keyin urinib ko'ring."
@@ -90,9 +89,7 @@ LOCALES: dict[str, LocaleCopy] = {
                 "ko'ring yoki mahsulot nomini matn bilan yozing."
             ),
             "guest_need_query_title": "Nimani qidiramiz?",
-            "guest_need_query_text": (
-                "Bot nomi yoniga mahsulot yozing, masalan: @bot iphone 15."
-            ),
+            "guest_need_query_text": ("Bot nomi yoniga mahsulot yozing, masalan: @bot iphone 15."),
             "guest_catalog_unavailable_title": "Katalog vaqtincha ishlamayapti",
             "guest_catalog_unavailable_text": (
                 "Hozir katalogdan mahsulot olib bo'lmadi. Keyinroq urinib ko'ring."
@@ -169,9 +166,7 @@ LOCALES: dict[str, LocaleCopy] = {
             "voice_too_large": (
                 "Ovozli xabar juda katta. Qisqaroq xabar yuboring yoki matn yozing."
             ),
-            "voice_too_long": (
-                "Ovozli xabar juda uzun. Qisqaroq xabar yuboring yoki matn yozing."
-            ),
+            "voice_too_long": ("Ovozli xabar juda uzun. Qisqaroq xabar yuboring yoki matn yozing."),
             "voice_transcription_failed": (
                 "Ovozli xabarni aniq tushuna olmadim. Qisqaroq ayting yoki matn yuboring."
             ),
@@ -274,10 +269,11 @@ LOCALES: dict[str, LocaleCopy] = {
                 "товара."
             ),
             "found_intro": "Нашел карточки по запросу «{query}». Показываю первые {count}:",
-            "catalog_unavailable": "Каталог сейчас недоступен. Попробуйте позже.",
-            "rate_limited": (
-                "Слишком много запросов. Попробуйте снова через {retry_after}."
+            "sponsored_found_intro": (
+                "Рекламное предложение. Оно показывается отдельно от обычной выдачи:"
             ),
+            "catalog_unavailable": "Каталог сейчас недоступен. Попробуйте позже.",
+            "rate_limited": ("Слишком много запросов. Попробуйте снова через {retry_after}."),
             "ai_rate_limited": (
                 "Лимит поиска по фото и голосу исчерпан. Попробуйте через {retry_after} "
                 "или напишите название товара текстом."
@@ -335,9 +331,7 @@ LOCALES: dict[str, LocaleCopy] = {
             "photo_understanding_failed": (
                 "Не смог уверенно понять товар на фото. Напишите название или важные признаки."
             ),
-            "photo_found_intro": (
-                "По фото ищу как: <b>{query}</b>. Показываю первые {count}:"
-            ),
+            "photo_found_intro": ("По фото ищу как: <b>{query}</b>. Показываю первые {count}:"),
             "photo_no_results": (
                 "По фото понял: <b>{query}</b>, но достаточно похожий товар в каталоге "
                 "не нашел. Отправьте фото с другого ракурса или напишите название."
@@ -469,6 +463,9 @@ LOCALES: dict[str, LocaleCopy] = {
                 "or specify the brand, color, size, or product category."
             ),
             "found_intro": "Found product cards for “{query}”. Showing the first {count}:",
+            "sponsored_found_intro": (
+                "Sponsored offer. It is shown separately from regular results:"
+            ),
             "catalog_unavailable": "The catalog is unavailable right now. Try again later.",
             "rate_limited": "Too many requests. Try again in {retry_after}.",
             "ai_rate_limited": (
@@ -497,16 +494,14 @@ LOCALES: dict[str, LocaleCopy] = {
             "menu_button": "🔎 Find product",
             "search_cta_button": "🔎 Search product",
             "photo_search_prompt": (
-                "Send a product photo - I will try to find similar options in marketplace "
-                "cards."
+                "Send a product photo - I will try to find similar options in marketplace cards."
             ),
             "voice_search_prompt": (
                 "Send a voice message with the product name - I will recognize the request "
                 "and start searching."
             ),
             "description_picture_text": (
-                "Find a product by photo, voice, or name - Izlaber shows options in one "
-                "place."
+                "Find a product by photo, voice, or name - Izlaber shows options in one place."
             ),
             "share_text": (
                 "Try Izlaber - the bot searches Uzbekistan marketplaces right in Telegram. "
@@ -641,10 +636,7 @@ def profile_locale_for(language_code: str | None) -> LocaleCopy:
 
 
 def more_button_values() -> set[str]:
-    return {
-        _normalize_more_button_text(locale.more_button)
-        for locale in LOCALES.values()
-    } | {
+    return {_normalize_more_button_text(locale.more_button) for locale in LOCALES.values()} | {
         "more",
         "yana",
         "еще",
@@ -685,8 +677,7 @@ CONSENT_MULTILINGUAL_BUTTONS = {
 
 def format_multilingual_consent_message(key: str) -> str:
     return "\n\n".join(
-        format_message(key, language_code)
-        for language_code in CONSENT_PROMPT_LANGUAGE_ORDER
+        format_message(key, language_code) for language_code in CONSENT_PROMPT_LANGUAGE_ORDER
     )
 
 

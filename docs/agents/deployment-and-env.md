@@ -25,6 +25,15 @@ Analytics site variables:
 | --- | --- |
 | `SITE_PORT` | Host port for the Next.js analytics site in Docker Compose. |
 | `ANALYTICS_API_KEY` | Optional dedicated internal API key for the analytics site. Falls back to `BOT_API_KEY` if empty. |
+| `SITE_ADMIN_USERNAME` | Analytics login username. Defaults to `admin`. |
+| `SITE_ADMIN_PASSWORD` | Analytics login password. Defaults to `admin`; change in production when practical. |
+| `SITE_ADMIN_TELEGRAM_IDS` | Comma-separated Telegram admin IDs that receive 8-symbol login codes. |
+| `SITE_AUTH_SECRET` | Secret for signed dashboard session/code cookies. Use a random production value. |
+| `SITE_AUTH_SESSION_TTL_SECONDS` | Analytics session lifetime. Defaults to 12 hours. |
+| `SITE_AUTH_CODE_TTL_SECONDS` | Telegram login code lifetime. Defaults to 10 minutes. |
+
+The analytics site must keep auth server-side. Do not expose `ANALYTICS_API_KEY`,
+`BOT_API_KEY`, `TELEGRAM_BOT_TOKEN`, or auth secrets to browser components.
 
 Consent variables:
 
@@ -45,6 +54,7 @@ Analytics variables:
 | `BOT_ANALYTICS_ENABLED` | Enables bot-side event writes to the server. |
 | `BOT_ANALYTICS_TIMEOUT` | Short timeout for analytics writes so user search is not blocked. |
 | `BOT_PUBLIC_BASE_URL` | Public server origin used to generate product click redirect links. |
+| `BOT_SPONSORED_SEARCH_LIMIT` | Sponsored product cards per first search page. Set `0` to disable sponsored placements. |
 | `ANALYTICS_COOKIE_ENABLED` | Enables first-party click attribution cookie on redirect endpoint. |
 | `ANALYTICS_COOKIE_NAME` | Cookie name, default `izlaber_cid`. |
 | `ANALYTICS_HASH_IP` | Stores salted IP hashes for redirect events when enabled. |

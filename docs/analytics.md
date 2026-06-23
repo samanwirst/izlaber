@@ -1,6 +1,7 @@
 # Analytics
 
-Izlaber stores analytics in `catalog_analyticsevent`. There is no dashboard yet; the first goal is durable collection for later reporting.
+Izlaber stores analytics in `catalog_analyticsevent` and exposes aggregated reporting in
+the Next.js dashboard under `site/`.
 
 ## Stored Event Types
 
@@ -17,6 +18,8 @@ Izlaber stores analytics in `catalog_analyticsevent`. There is no dashboard yet;
 | `more_results` | Bot | User requested next results by button or text alias. |
 | `view_item_list` | Bot | A product card was shown to a user. |
 | `select_item` | Redirect | User clicked a tracked product card link. |
+| `sponsored_impression` | Bot | A clearly labeled sponsored product card was shown. |
+| `sponsored_click` | Redirect | User clicked a sponsored product card link. |
 
 `search`, `view_item_list`, and `select_item` intentionally match common ecommerce analytics naming.
 
@@ -50,3 +53,32 @@ https://example.com/api/v1/redirect/products/{product_id}/?ctx={analytics_event_
 ```
 
 The server stores `select_item` and redirects to the product's `canonical_url`.
+
+## Sponsored Campaigns
+
+Sponsored campaigns are stored in `catalog_sponsoredcampaign` and managed through the
+analytics site or Django admin. A campaign targets one active product, one or more
+keywords, optional language codes, optional start/end timestamps, priority, and daily
+or total impression caps.
+
+Bot placement lookup:
+
+```text
+GET /api/v1/sponsored-placements/?q=iphone&language_code=ru&limit=1
+X-Internal-API-Key: <BOT_API_KEY>
+```
+
+Management endpoints:
+
+```text
+GET/POST /api/v1/sponsored-campaigns/
+GET/PATCH /api/v1/sponsored-campaigns/{id}/
+```
+
+Operational rules:
+
+- Sponsored cards must keep the localized `Sponsored offer` / `Рекламное предложение`
+  label.
+- Do not silently merge sponsored performance into organic `view_item_list` or
+  `select_item` metrics.
+- `BOT_SPONSORED_SEARCH_LIMIT=0` disables sponsored placement in the bot.

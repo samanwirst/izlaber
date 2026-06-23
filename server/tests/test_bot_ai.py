@@ -88,16 +88,33 @@ def test_product_card_can_render_tracking_link():
     assert tracking_url in render_product_card(item, 1, "en")
 
 
+def test_product_card_renders_sponsored_label():
+    item = replace(
+        product(123, "Sponsored product"),
+        sponsored_campaign_id=7,
+        sponsored_campaign_name="Test campaign",
+        sponsored_advertiser_name="Test Seller",
+    )
+
+    card = render_product_card(item, 1, "ru")
+
+    assert "Рекламное предложение" in card
+    assert "Sponsored product" in card
+
+
 def test_policy_urls_are_derived_from_public_base_url():
     assert _policy_url("", "https://izlaber.example", "/legal/privacy/") == (
         "https://izlaber.example/legal/privacy/"
     )
     assert _policy_url(None, "", "/legal/privacy/") == ""
-    assert _policy_url(
-        "https://static.example/privacy",
-        "https://izlaber.example",
-        "/legal/privacy/",
-    ) == "https://static.example/privacy"
+    assert (
+        _policy_url(
+            "https://static.example/privacy",
+            "https://izlaber.example",
+            "/legal/privacy/",
+        )
+        == "https://static.example/privacy"
+    )
 
 
 @pytest.mark.asyncio
@@ -433,13 +450,16 @@ def test_voice_search_availability_requires_key_and_runtime():
 
     assert _voice_search_available(config) is True
     assert _voice_search_available(Config(bot=BotConfig(token="test"), openai_api_key="")) is False
-    assert _voice_search_available(
-        Config(
-            bot=BotConfig(token="test"),
-            openai_api_key="key",
-            openai_voice_search_enabled=False,
+    assert (
+        _voice_search_available(
+            Config(
+                bot=BotConfig(token="test"),
+                openai_api_key="key",
+                openai_voice_search_enabled=False,
+            )
         )
-    ) is False
+        is False
+    )
 
 
 def test_config_exposes_voice_defaults():
@@ -488,9 +508,7 @@ def test_search_expansion_helpers():
         "min_price": 1,
         "max_price": 2,
     }
-    assert [item.id for item in _merge_unique_products([product(1, "A")], [product(1, "A")])] == [
-        1
-    ]
+    assert [item.id for item in _merge_unique_products([product(1, "A")], [product(1, "A")])] == [1]
 
 
 def test_ai_fallback_skips_good_local_results():

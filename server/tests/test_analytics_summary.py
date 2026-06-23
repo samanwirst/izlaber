@@ -89,6 +89,10 @@ def test_analytics_summary_returns_dashboard_aggregates(settings, db):
         "impressions": 1,
         "clicks": 1,
         "ctr": 100.0,
+        "sponsored_impressions": 0,
+        "sponsored_clicks": 0,
+        "sponsored_ctr": 0.0,
+        "active_sponsored_campaigns": 0,
         "no_result_rate": 100.0,
         "active_consents": 1,
     }

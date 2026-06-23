@@ -670,7 +670,18 @@ async def _run_text_search(
     )
     if ranked_products is None:
         return
-    if not ranked_products:
+    candidate_offset = len(ranked_products)
+    sponsored_products = await _load_sponsored_products(
+        query=query,
+        language_code=language,
+        config=config,
+    )
+    if sponsored_products:
+        ranked_products = _exclude_product_ids(
+            ranked_products,
+            {product.id for product in sponsored_products},
+        )
+    if not ranked_products and not sponsored_products:
         search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
         await track_message_event(
             config=config,
@@ -695,6 +706,30 @@ async def _run_text_search(
             )
         return
 
+    if not ranked_products:
+        search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
+        if status_message is not None:
+            await _replace_status_message(
+                status_message,
+                format_message("sponsored_found_intro", language),
+                language=language,
+                reply_markup=main_menu_keyboard(language),
+            )
+        else:
+            await message.answer(
+                format_message("sponsored_found_intro", language),
+                reply_markup=main_menu_keyboard(language),
+            )
+        await _send_products(
+            message,
+            sponsored_products,
+            start_index=1,
+            language_code=language,
+            query=query,
+            config=config,
+        )
+        return
+
     products = ranked_products[: config.product_search_limit]
     search_state.set(
         chat_id=message.chat.id,
@@ -702,7 +737,7 @@ async def _run_text_search(
         query=query,
         products=ranked_products,
         offset=len(products),
-        candidate_offset=len(ranked_products),
+        candidate_offset=candidate_offset,
     )
     if status_message is not None:
         await _replace_status_message(
@@ -715,6 +750,19 @@ async def _run_text_search(
         await message.answer(
             format_message(intro_key, language, query=query, count=len(products)),
             reply_markup=more_results_keyboard(language),
+        )
+    if sponsored_products:
+        await message.answer(
+            format_message("sponsored_found_intro", language),
+            disable_web_page_preview=True,
+        )
+        await _send_products(
+            message,
+            sponsored_products,
+            start_index=1,
+            language_code=language,
+            query=query,
+            config=config,
         )
     await _send_products(
         message,
@@ -836,9 +884,7 @@ def _product_requirement_score(product: ProductDTO, requirements: list[set[str]]
     ).casefold()
     tokens = set(_query_tokens(text))
     matched = sum(
-        1
-        for requirement in requirements
-        if _matches_requirement(requirement, text, tokens)
+        1 for requirement in requirements if _matches_requirement(requirement, text, tokens)
     )
     return matched / len(requirements)
 
@@ -908,6 +954,36 @@ async def _load_expanded_products(
                 error,
             )
     return products
+
+
+async def _load_sponsored_products(
+    *,
+    query: str,
+    language_code: str | None,
+    config: Config,
+) -> list[ProductDTO]:
+    if config.sponsored_search_limit <= 0:
+        return []
+    try:
+        async with ServerAPIClient(
+            config.server_api_base_url,
+            config.bot_api_key,
+            timeout=config.server_api_timeout,
+        ) as client:
+            return await client.sponsored_products(
+                query=query,
+                language_code=language_code,
+                limit=config.sponsored_search_limit,
+            )
+    except ServerAPIError as error:
+        logger.warning("Sponsored product search failed for query %r: %s", query, error)
+        return []
+
+
+def _exclude_product_ids(products: list[ProductDTO], product_ids: set[int]) -> list[ProductDTO]:
+    if not product_ids:
+        return products
+    return [product for product in products if product.id not in product_ids]
 
 
 def _expansion_filters(expansion: SearchExpansion) -> dict[str, int]:
@@ -1233,13 +1309,14 @@ async def _send_products(
     telegram_user_id: int | None = None,
 ) -> None:
     for index, product in enumerate(products, start=start_index):
+        is_sponsored = product.sponsored_campaign_id is not None
         context_event_id = await track_message_event(
             config=config,
             message=message,
-            event_type="view_item_list",
+            event_type="sponsored_impression" if is_sponsored else "view_item_list",
             telegram_user_id=telegram_user_id,
             language_code=language_code,
-            input_type="product_card",
+            input_type="sponsored_product_card" if is_sponsored else "product_card",
             query=query,
             product_id=product.id,
             source_product_id=product.source_product_id,
@@ -1250,6 +1327,12 @@ async def _send_products(
                 "item_id": product.id,
                 "item_name": product.title,
                 "source_product_id": product.source_product_id,
+                "is_sponsored": is_sponsored,
+                "sponsored_campaign_id": (
+                    str(product.sponsored_campaign_id) if is_sponsored else ""
+                ),
+                "sponsored_campaign_name": product.sponsored_campaign_name or "",
+                "sponsored_advertiser_name": product.sponsored_advertiser_name or "",
             },
         )
         tracking_url = product_click_url(

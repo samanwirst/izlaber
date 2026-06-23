@@ -8,6 +8,9 @@ from apps.catalog.views import (
     MarketplaceViewSet,
     ProductClickRedirectView,
     ProductViewSet,
+    SponsoredCampaignDetailView,
+    SponsoredCampaignListView,
+    SponsoredPlacementListView,
     UserConsentDetailView,
     UserConsentListView,
     UserPreferenceDetailView,
@@ -22,6 +25,21 @@ router.register("products", ProductViewSet, basename="product")
 urlpatterns = router.urls + [
     path("analytics/events/", AnalyticsEventCreateView.as_view(), name="analytics-event-create"),
     path("analytics/summary/", AnalyticsSummaryView.as_view(), name="analytics-summary"),
+    path(
+        "sponsored-campaigns/",
+        SponsoredCampaignListView.as_view(),
+        name="sponsored-campaigns",
+    ),
+    path(
+        "sponsored-campaigns/<int:campaign_id>/",
+        SponsoredCampaignDetailView.as_view(),
+        name="sponsored-campaign-detail",
+    ),
+    path(
+        "sponsored-placements/",
+        SponsoredPlacementListView.as_view(),
+        name="sponsored-placements",
+    ),
     path("user-consents/", UserConsentListView.as_view(), name="user-consents"),
     path(
         "user-consents/<str:telegram_user_id>/",

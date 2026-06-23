@@ -35,7 +35,7 @@ export function AnalyticsDashboard({ summary }: DashboardProps) {
   ];
 
   return (
-    <main className="dashboard-shell">
+    <section className="dashboard-shell">
       <header className="topbar">
         <div>
           <p className="eyebrow">Izlaber Intelligence</p>
@@ -200,7 +200,7 @@ export function AnalyticsDashboard({ summary }: DashboardProps) {
           title="Input types"
         />
       </section>
-    </main>
+    </section>
   );
 }
 

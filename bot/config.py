@@ -18,6 +18,7 @@ class Config:
     public_base_url: str = ""
     bot_api_key: str = ""
     product_search_limit: int = 10
+    sponsored_search_limit: int = 1
     server_api_timeout: float = 10.0
     consent_enabled: bool = True
     consent_version: str = "2026-06-consent-v3"
@@ -100,15 +101,14 @@ def load_config() -> Config:
         public_base_url=public_base_url,
         bot_api_key=getenv("BOT_API_KEY", ""),
         product_search_limit=int(getenv("BOT_PRODUCT_SEARCH_LIMIT", "10")),
+        sponsored_search_limit=max(0, int(getenv("BOT_SPONSORED_SEARCH_LIMIT", "1"))),
         server_api_timeout=float(getenv("BOT_SERVER_API_TIMEOUT", "10")),
-        consent_enabled=getenv("BOT_CONSENT_ENABLED", "true").lower()
-        in {"1", "true", "yes"},
+        consent_enabled=getenv("BOT_CONSENT_ENABLED", "true").lower() in {"1", "true", "yes"},
         consent_version=getenv("BOT_CONSENT_VERSION", "2026-06-consent-v3").strip()
         or "2026-06-consent-v3",
         privacy_policy_url=privacy_policy_url,
         sponsored_ads_policy_url=sponsored_ads_policy_url,
-        analytics_enabled=getenv("BOT_ANALYTICS_ENABLED", "true").lower()
-        in {"1", "true", "yes"},
+        analytics_enabled=getenv("BOT_ANALYTICS_ENABLED", "true").lower() in {"1", "true", "yes"},
         analytics_timeout=float(getenv("BOT_ANALYTICS_TIMEOUT", "2")),
         openai_api_key=getenv("OPENAI_API_KEY", ""),
         openai_model=getenv("OPENAI_RERANK_MODEL", "gpt-5.4-nano"),
@@ -141,9 +141,7 @@ def load_config() -> Config:
             "true",
         ).lower()
         in {"1", "true", "yes"},
-        openai_photo_visual_rerank_limit=int(
-            getenv("OPENAI_PHOTO_VISUAL_RERANK_LIMIT", "16")
-        ),
+        openai_photo_visual_rerank_limit=int(getenv("OPENAI_PHOTO_VISUAL_RERANK_LIMIT", "16")),
         openai_photo_visual_rerank_min_score=int(
             getenv("OPENAI_PHOTO_VISUAL_RERANK_MIN_SCORE", "55")
         ),
@@ -159,12 +157,8 @@ def load_config() -> Config:
         in {"1", "true", "yes"},
         openai_voice_model=getenv("OPENAI_VOICE_MODEL", "gpt-4o-mini-transcribe"),
         openai_voice_timeout=float(getenv("OPENAI_VOICE_TIMEOUT", "20")),
-        openai_voice_max_download_bytes=int(
-            getenv("OPENAI_VOICE_MAX_DOWNLOAD_BYTES", "8000000")
-        ),
-        openai_voice_max_duration_seconds=int(
-            getenv("OPENAI_VOICE_MAX_DURATION_SECONDS", "180")
-        ),
+        openai_voice_max_download_bytes=int(getenv("OPENAI_VOICE_MAX_DOWNLOAD_BYTES", "8000000")),
+        openai_voice_max_duration_seconds=int(getenv("OPENAI_VOICE_MAX_DURATION_SECONDS", "180")),
         openai_status_notify_user_id=_optional_int(
             getenv("OPENAI_STATUS_NOTIFY_USER_ID"),
             default=976835256,
@@ -179,8 +173,7 @@ def load_config() -> Config:
         in {"1", "true", "yes"},
         guest_search_enabled=getenv("BOT_GUEST_SEARCH_ENABLED", "true").lower()
         in {"1", "true", "yes"},
-        rate_limit_enabled=getenv("BOT_RATE_LIMIT_ENABLED", "true").lower()
-        in {"1", "true", "yes"},
+        rate_limit_enabled=getenv("BOT_RATE_LIMIT_ENABLED", "true").lower() in {"1", "true", "yes"},
         rate_limit_admin_bypass=getenv("BOT_RATE_LIMIT_ADMIN_BYPASS", "true").lower()
         in {"1", "true", "yes"},
         rate_limit_max_events=max(1, int(getenv("BOT_RATE_LIMIT_MAX_EVENTS", "30"))),

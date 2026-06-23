@@ -1,4 +1,5 @@
 import hashlib
+import re
 import uuid
 from datetime import timedelta
 
@@ -20,6 +21,7 @@ from apps.catalog.models import (
     Category,
     Marketplace,
     Product,
+    SponsoredCampaign,
     UserConsent,
     UserPreference,
 )
@@ -30,6 +32,7 @@ from apps.catalog.serializers import (
     MarketplaceSerializer,
     ProductCardSerializer,
     ProductSerializer,
+    SponsoredCampaignSerializer,
     UserConsentSerializer,
     UserPreferenceSerializer,
 )
@@ -336,6 +339,89 @@ class UserConsentDetailView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+class SponsoredCampaignListView(APIView):
+    authentication_classes = (BotAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        queryset = SponsoredCampaign.objects.select_related("product").order_by(
+            "status",
+            "-priority",
+            "-updated_at",
+        )
+        if status_value := request.query_params.get("status"):
+            queryset = queryset.filter(status=status_value)
+        campaigns = _with_sponsored_stats(list(queryset[:200]))
+        serializer = SponsoredCampaignSerializer(campaigns, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = SponsoredCampaignSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        campaign = serializer.save()
+        campaign = _with_sponsored_stats([campaign])[0]
+        return Response(SponsoredCampaignSerializer(campaign).data, status=status.HTTP_201_CREATED)
+
+
+class SponsoredCampaignDetailView(APIView):
+    authentication_classes = (BotAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, _request, campaign_id: int):
+        campaign = get_object_or_404(
+            SponsoredCampaign.objects.select_related("product"),
+            pk=campaign_id,
+        )
+        campaign = _with_sponsored_stats([campaign])[0]
+        return Response(SponsoredCampaignSerializer(campaign).data)
+
+    def patch(self, request, campaign_id: int):
+        campaign = get_object_or_404(SponsoredCampaign, pk=campaign_id)
+        serializer = SponsoredCampaignSerializer(campaign, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        campaign = serializer.save()
+        campaign = _with_sponsored_stats([campaign])[0]
+        return Response(SponsoredCampaignSerializer(campaign).data)
+
+
+class SponsoredPlacementListView(APIView):
+    authentication_classes = (BotAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        query = " ".join(str(request.query_params.get("q") or "").split())
+        if not query:
+            return Response([])
+        language_code = _normalize_language_code(
+            str(request.query_params.get("language_code") or "")
+        )
+        limit = min(_positive_int(request.query_params.get("limit"), default=1), 5)
+        if limit <= 0:
+            return Response([])
+
+        now = timezone.now()
+        queryset = (
+            SponsoredCampaign.objects.select_related("product")
+            .filter(status=SponsoredCampaign.Status.ACTIVE, product__is_active=True)
+            .filter(Q(starts_at__isnull=True) | Q(starts_at__lte=now))
+            .filter(Q(ends_at__isnull=True) | Q(ends_at__gt=now))
+            .order_by("-priority", "-updated_at")
+        )
+        campaigns: list[SponsoredCampaign] = []
+        for campaign in queryset[:200]:
+            if not _campaign_allows_language(campaign, language_code):
+                continue
+            if not _campaign_matches_query(campaign, query):
+                continue
+            if _campaign_limits_exhausted(campaign, now=now):
+                continue
+            campaigns.append(campaign)
+            if len(campaigns) >= limit:
+                break
+
+        return Response([_sponsored_placement_payload(campaign) for campaign in campaigns])
+
+
 class AnalyticsEventCreateView(APIView):
     authentication_classes = (BotAPIKeyAuthentication,)
     permission_classes = (IsAuthenticated,)
@@ -368,6 +454,8 @@ class AnalyticsSummaryView(APIView):
         no_results = queryset.filter(event_type="search_no_results").count()
         impressions = queryset.filter(event_type="view_item_list").count()
         clicks = queryset.filter(event_type="select_item").count()
+        sponsored_impressions = queryset.filter(event_type="sponsored_impression").count()
+        sponsored_clicks = queryset.filter(event_type="sponsored_click").count()
         users = (
             queryset.exclude(telegram_user_id__isnull=True)
             .values("telegram_user_id")
@@ -389,6 +477,10 @@ class AnalyticsSummaryView(APIView):
                     "impressions": impressions,
                     "clicks": clicks,
                     "ctr": _rate(clicks, impressions),
+                    "sponsored_impressions": sponsored_impressions,
+                    "sponsored_clicks": sponsored_clicks,
+                    "sponsored_ctr": _rate(sponsored_clicks, sponsored_impressions),
+                    "active_sponsored_campaigns": _active_sponsored_campaign_count(),
                     "no_result_rate": _rate(no_results, searches),
                     "active_consents": _active_consent_count(),
                 },
@@ -419,11 +511,22 @@ class ProductClickRedirectView(APIView):
             "context_event_id": str(context_event.event_id) if context_event else "",
             "target_url": product.canonical_url,
         }
+        event_type = "select_item"
+        if context_event and context_event.event_type == "sponsored_impression":
+            event_type = "sponsored_click"
+            metadata["is_sponsored"] = True
+            for key in (
+                "sponsored_campaign_id",
+                "sponsored_campaign_name",
+                "sponsored_advertiser_name",
+            ):
+                if key in context_event.metadata:
+                    metadata[key] = context_event.metadata[key]
         if raw_context := request.GET.get("ctx"):
             metadata["raw_context_event_id"] = raw_context
 
         AnalyticsEvent.objects.create(
-            event_type="select_item",
+            event_type=event_type,
             source=AnalyticsEvent.Source.REDIRECT,
             telegram_user_id=context_event.telegram_user_id if context_event else None,
             chat_id=context_event.chat_id if context_event else None,
@@ -512,6 +615,104 @@ def _consent_summary() -> dict[str, int]:
     }
 
 
+def _active_sponsored_campaign_count() -> int:
+    now = timezone.now()
+    return (
+        SponsoredCampaign.objects.filter(
+            status=SponsoredCampaign.Status.ACTIVE,
+            product__is_active=True,
+        )
+        .filter(Q(starts_at__isnull=True) | Q(starts_at__lte=now))
+        .filter(Q(ends_at__isnull=True) | Q(ends_at__gt=now))
+        .count()
+    )
+
+
+def _with_sponsored_stats(campaigns: list[SponsoredCampaign]) -> list[SponsoredCampaign]:
+    for campaign in campaigns:
+        impressions = _campaign_event_count(campaign, "sponsored_impression")
+        clicks = _campaign_event_count(campaign, "sponsored_click")
+        campaign.impressions = impressions
+        campaign.clicks = clicks
+        campaign.ctr = _rate(clicks, impressions)
+        campaign.remaining_total_impressions = (
+            None
+            if campaign.total_impression_limit is None
+            else max(campaign.total_impression_limit - impressions, 0)
+        )
+    return campaigns
+
+
+def _campaign_allows_language(campaign: SponsoredCampaign, language_code: str) -> bool:
+    language_codes = campaign.language_codes if isinstance(campaign.language_codes, list) else []
+    if not language_codes:
+        return True
+    return language_code in {str(code).casefold()[:2] for code in language_codes}
+
+
+def _campaign_matches_query(campaign: SponsoredCampaign, query: str) -> bool:
+    query_text = query.casefold()
+    query_tokens = set(_query_tokens(query_text))
+    keywords = campaign.keywords if isinstance(campaign.keywords, list) else []
+    for keyword in keywords:
+        keyword_text = " ".join(str(keyword).casefold().split())
+        if not keyword_text:
+            continue
+        keyword_tokens = set(_query_tokens(keyword_text))
+        if keyword_text in query_text or keyword_tokens <= query_tokens:
+            return True
+    return False
+
+
+def _campaign_limits_exhausted(campaign: SponsoredCampaign, *, now) -> bool:
+    if campaign.total_impression_limit is not None:
+        total = _campaign_event_count(campaign, "sponsored_impression")
+        if total >= campaign.total_impression_limit:
+            return True
+    if campaign.daily_impression_limit is not None:
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        daily = _campaign_event_count(
+            campaign,
+            "sponsored_impression",
+            created_at_gte=day_start,
+        )
+        if daily >= campaign.daily_impression_limit:
+            return True
+    return False
+
+
+def _campaign_event_count(
+    campaign: SponsoredCampaign,
+    event_type: str,
+    *,
+    created_at_gte=None,
+) -> int:
+    queryset = AnalyticsEvent.objects.filter(
+        event_type=event_type,
+        metadata__sponsored_campaign_id=str(campaign.id),
+    )
+    if created_at_gte is not None:
+        queryset = queryset.filter(created_at__gte=created_at_gte)
+    return queryset.count()
+
+
+def _sponsored_placement_payload(campaign: SponsoredCampaign) -> dict:
+    payload = ProductCardSerializer(campaign.product).data
+    payload.update(
+        {
+            "sponsored_campaign_id": campaign.id,
+            "sponsored_campaign_name": campaign.name,
+            "sponsored_advertiser_name": campaign.advertiser_name,
+            "is_sponsored": True,
+        }
+    )
+    return payload
+
+
+def _query_tokens(value: str) -> list[str]:
+    return re.findall(r"[0-9a-zа-яё]+", value.casefold().replace("ё", "е"))
+
+
 def _analytics_time_series(queryset, *, start_date, days: int) -> list[dict[str, int | str]]:
     rows = (
         queryset.annotate(day=TruncDate("created_at"))
@@ -534,13 +735,15 @@ def _analytics_time_series(queryset, *, start_date, days: int) -> list[dict[str,
             "date": (start_date + timedelta(days=offset)).isoformat(),
             "users": users_by_day.get(start_date + timedelta(days=offset), 0),
             "searches": counts.get((start_date + timedelta(days=offset), "search"), 0),
-            "no_results": counts.get(
-                (start_date + timedelta(days=offset), "search_no_results"), 0
-            ),
-            "impressions": counts.get(
-                (start_date + timedelta(days=offset), "view_item_list"), 0
-            ),
+            "no_results": counts.get((start_date + timedelta(days=offset), "search_no_results"), 0),
+            "impressions": counts.get((start_date + timedelta(days=offset), "view_item_list"), 0),
             "clicks": counts.get((start_date + timedelta(days=offset), "select_item"), 0),
+            "sponsored_impressions": counts.get(
+                (start_date + timedelta(days=offset), "sponsored_impression"), 0
+            ),
+            "sponsored_clicks": counts.get(
+                (start_date + timedelta(days=offset), "sponsored_click"), 0
+            ),
         }
         for offset in range(days)
     ]
@@ -642,7 +845,7 @@ def _request_visitor_id(request) -> str:
 def _request_ip_hash(request) -> str:
     if not settings.ANALYTICS_HASH_IP:
         return ""
-    raw_ip = (request.META.get("HTTP_X_FORWARDED_FOR", "").split(",", maxsplit=1)[0].strip())
+    raw_ip = request.META.get("HTTP_X_FORWARDED_FOR", "").split(",", maxsplit=1)[0].strip()
     raw_ip = raw_ip or request.META.get("REMOTE_ADDR", "")
     if not raw_ip:
         return ""

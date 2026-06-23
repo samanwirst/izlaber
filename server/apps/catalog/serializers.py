@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 
 from apps.catalog.models import (
@@ -7,6 +9,7 @@ from apps.catalog.models import (
     Product,
     ProductSnapshot,
     Seller,
+    SponsoredCampaign,
     UserConsent,
     UserPreference,
 )
@@ -178,3 +181,116 @@ class AnalyticsEventSerializer(serializers.ModelSerializer):
             "created_at",
         )
         read_only_fields = ("created_at",)
+
+
+class SponsoredCampaignSerializer(serializers.ModelSerializer):
+    product = ProductCardSerializer(read_only=True)
+    product_id = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.filter(is_active=True),
+        source="product",
+        write_only=True,
+        required=False,
+    )
+    product_lookup = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    impressions = serializers.IntegerField(read_only=True)
+    clicks = serializers.IntegerField(read_only=True)
+    ctr = serializers.FloatField(read_only=True)
+    remaining_total_impressions = serializers.IntegerField(read_only=True, allow_null=True)
+
+    class Meta:
+        model = SponsoredCampaign
+        fields = (
+            "id",
+            "name",
+            "advertiser_name",
+            "product",
+            "product_id",
+            "product_lookup",
+            "keywords",
+            "language_codes",
+            "status",
+            "priority",
+            "starts_at",
+            "ends_at",
+            "daily_impression_limit",
+            "total_impression_limit",
+            "notes",
+            "metadata",
+            "impressions",
+            "clicks",
+            "ctr",
+            "remaining_total_impressions",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "created_at",
+            "updated_at",
+            "impressions",
+            "clicks",
+            "ctr",
+            "remaining_total_impressions",
+        )
+
+    def validate_keywords(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("keywords must be a list of strings.")
+        keywords = []
+        seen = set()
+        for item in value:
+            keyword = " ".join(str(item).split())
+            key = keyword.casefold()
+            if not keyword or key in seen:
+                continue
+            seen.add(key)
+            keywords.append(keyword[:80])
+        if not keywords:
+            raise serializers.ValidationError("At least one keyword is required.")
+        return keywords[:30]
+
+    def validate_language_codes(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("language_codes must be a list of strings.")
+        allowed = {"uz", "ru", "en"}
+        return [code for code in (str(item).casefold()[:2] for item in value) if code in allowed]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if (
+            attrs.get("ends_at")
+            and attrs.get("starts_at")
+            and attrs["ends_at"] <= attrs["starts_at"]
+        ):
+            raise serializers.ValidationError({"ends_at": "ends_at must be later than starts_at."})
+        if "product" not in attrs:
+            product = self._product_from_lookup(self.initial_data.get("product_lookup"))
+            if product is not None:
+                attrs["product"] = product
+        attrs.pop("product_lookup", None)
+        if "product" not in attrs and self.instance is None:
+            raise serializers.ValidationError({"product_lookup": "Product is required."})
+        return attrs
+
+    @staticmethod
+    def _product_from_lookup(value) -> Product | None:
+        lookup = str(value or "").strip()
+        if not lookup:
+            return None
+        queryset = Product.objects.filter(is_active=True)
+        if lookup.isdigit():
+            product = queryset.filter(id=int(lookup)).first()
+            if product is not None:
+                return product
+            product = queryset.filter(source_product_id=lookup).first()
+            if product is not None:
+                return product
+        product = queryset.filter(source_product_id=lookup).first()
+        if product is not None:
+            return product
+        numeric_matches = re.findall(r"\d+", lookup)
+        for source_product_id in reversed(numeric_matches):
+            product = queryset.filter(source_product_id=source_product_id).first()
+            if product is not None:
+                return product
+        return queryset.filter(canonical_url__icontains=lookup).first()

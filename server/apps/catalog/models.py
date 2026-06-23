@@ -247,6 +247,56 @@ class UserConsent(TimestampedModel):
         return f"{self.telegram_user_id}: {self.consent_version} ({state})"
 
 
+class SponsoredCampaign(TimestampedModel):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        ACTIVE = "active", "Active"
+        PAUSED = "paused", "Paused"
+        FINISHED = "finished", "Finished"
+
+    name = models.CharField(max_length=255)
+    advertiser_name = models.CharField(max_length=255)
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="sponsored_campaigns",
+    )
+    keywords = models.JSONField(default=list, blank=True)
+    language_codes = models.JSONField(default=list, blank=True)
+    status = models.CharField(
+        max_length=32,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        db_index=True,
+    )
+    priority = models.PositiveSmallIntegerField(default=100)
+    starts_at = models.DateTimeField(blank=True, null=True)
+    ends_at = models.DateTimeField(blank=True, null=True)
+    daily_impression_limit = models.PositiveIntegerField(blank=True, null=True)
+    total_impression_limit = models.PositiveIntegerField(blank=True, null=True)
+    notes = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ("status", "-priority", "-updated_at")
+        indexes = [
+            models.Index(fields=["status", "starts_at", "ends_at"]),
+            models.Index(fields=["product", "status"]),
+            models.Index(fields=["priority"]),
+        ]
+
+    def is_active_now(self, now=None) -> bool:
+        now = now or timezone.now()
+        if self.status != self.Status.ACTIVE:
+            return False
+        if self.starts_at and self.starts_at > now:
+            return False
+        return not (self.ends_at and self.ends_at <= now)
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.advertiser_name})"
+
+
 class AnalyticsEvent(models.Model):
     class Source(models.TextChoices):
         BOT = "bot", "Bot"

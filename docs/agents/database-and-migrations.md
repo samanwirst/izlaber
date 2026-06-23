@@ -22,6 +22,7 @@
 | `ProductSearchTerm` | SQLite fallback token search index. |
 | `UserPreference` | Persistent Telegram user language preferences. |
 | `AnalyticsEvent` | Persistent bot, search, impression, and click analytics events. |
+| `SponsoredCampaign` | Managed sponsored product placements with keywords, dates, priority, and caps. |
 | `CrawlRun` | Parser run lifecycle and counts. |
 | `CrawlEvent` | Parser events. |
 | `CrawlRunSeenProduct` | Products seen in a full crawl for deactivation logic. |
