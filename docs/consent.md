@@ -35,6 +35,13 @@ The consent prompt covers:
 - `BOT_CONSENT_ENABLED=true` enables the aiogram middleware gate.
 - Before consent is accepted, the bot shows the consent prompt in Uzbek, Russian, and
   English in one message because it cannot rely on stored language preferences yet.
+- The consent prompt must render only one reply keyboard button for acceptance. Policy
+  URLs are rendered as text links in the message body, not as inline buttons.
+- The acceptance text is a service event. It must be handled by the consent handler
+  before generic text search and must not call catalog search, search analytics, or AI
+  reranking.
+- Revocation is available with `/consent revoke`; do not reintroduce a revoke button
+  unless the consent UX is reviewed again.
 - `BOT_CONSENT_VERSION` is stored with every user decision.
 - `USER_CONSENT_VERSION` is the server fallback/current version; keep it equal to
   `BOT_CONSENT_VERSION`.

@@ -1,7 +1,7 @@
 from aiogram.types import ReplyKeyboardRemove
 
 from bot.config import BotConfig, Config
-from bot.keyboards.consent import consent_request_keyboard, consent_status_keyboard
+from bot.keyboards.consent import consent_request_keyboard, is_consent_accept_text
 from bot.keyboards.language import language_selection_keyboard
 from bot.keyboards.main_menu import is_more_button_text, main_menu_keyboard, more_results_keyboard
 from bot.keyboards.product import product_card_keyboard
@@ -9,6 +9,7 @@ from bot.locales import (
     LOCALES,
     PROFILE_LANGUAGE_CODES,
     consent_multilingual_button,
+    format_consent_prompt,
     format_multilingual_consent_message,
     language_from_message,
     locale_for,
@@ -73,7 +74,6 @@ def test_keyboards_are_localized():
         consent_config,
         multilingual=True,
     )
-    consent_status = consent_status_keyboard("en", consent_config)
 
     assert uz_keyboard.keyboard[0][0].text == "Yana ko'rsatish"
     assert ru_keyboard.keyboard[0][0].text == "Показать ещё"
@@ -83,25 +83,16 @@ def test_keyboards_are_localized():
         "Русский",
         "English",
     ]
-    assert consent_keyboard.inline_keyboard[0][0].text == "✅ Согласен, начать поиск"
-    assert consent_keyboard.inline_keyboard[1][0].text == "Не сейчас"
-    assert [button.url for button in consent_keyboard.inline_keyboard[2]] == [
-        "https://example.com/privacy",
-        "https://example.com/ads",
-    ]
-    assert (
-        consent_multilingual_keyboard.inline_keyboard[0][0].text
-        == "✅ Roziman / Согласен / I agree"
+    assert consent_keyboard.keyboard[0][0].text == "✅ Согласен, начать поиск"
+    assert len(consent_keyboard.keyboard) == 1
+    assert consent_multilingual_keyboard.keyboard[0][0].text == (
+        "✅ Roziman / Согласен / I agree"
     )
-    assert (
-        consent_multilingual_keyboard.inline_keyboard[1][0].text
-        == "Hozir emas / Не сейчас / Not now"
-    )
-    assert [button.text for button in consent_multilingual_keyboard.inline_keyboard[2]] == [
-        "Ma'lumotlar / Данные / Data",
-        "Reklama / Реклама / Ads",
-    ]
-    assert consent_status.inline_keyboard[0][0].text == "Revoke consent"
+    assert len(consent_multilingual_keyboard.keyboard) == 1
+    assert is_consent_accept_text("✅ Согласен, начать поиск")
+    assert is_consent_accept_text("✅ Roziman / Согласен / I agree")
+    assert is_consent_accept_text("согласен")
+    assert not is_consent_accept_text("iphone")
 
     product_keyboard = product_card_keyboard(
         "en",
@@ -142,11 +133,19 @@ def test_product_copy_pluralization():
 
 
 def test_consent_prompt_can_render_before_language_choice():
-    prompt = format_multilingual_consent_message("consent_required")
+    prompt = format_consent_prompt(
+        "uz",
+        privacy_policy_url="https://example.com/privacy",
+        sponsored_ads_policy_url="https://example.com/ads",
+        multilingual=True,
+    )
 
     assert "Tovar qidirish uchun" in prompt
     assert "Чтобы искать товары" in prompt
     assert "To search for products" in prompt
+    assert "Ma'lumotlar / Данные / Data: https://example.com/privacy" in prompt
+    assert "Reklama / Реклама / Ads: https://example.com/ads" in prompt
+    assert format_multilingual_consent_message("consent_required") in prompt
     assert consent_multilingual_button("consent_first_alert") == (
         "Rozilik kerak / Нужно согласие / Consent required"
     )

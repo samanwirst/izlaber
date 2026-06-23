@@ -187,24 +187,19 @@ LOCALES: dict[str, LocaleCopy] = {
                 "Rozilikni /consent buyrug'i orqali bekor qilish mumkin."
             ),
             "consent_accept_button": "✅ Roziman, qidirishni boshlash",
-            "consent_decline_button": "Hozir emas",
-            "consent_revoke_button": "Rozilikni bekor qilish",
             "consent_privacy_button": "Ma'lumotlar haqida",
             "consent_ads_button": "Reklama haqida",
             "consent_first_alert": "Avval rozilikni tasdiqlang.",
             "consent_accepted": "Rozilik saqlandi.",
             "consent_ready": "Endi mahsulot nomi, fotosi yoki ovozli xabar yuboring.",
-            "consent_declined": (
-                "Rozilik berilmadi. Izlaber roziliksiz ishlamaydi. Qidirishni boshlash "
-                "uchun rozilikni tasdiqlang."
-            ),
             "consent_revoked": (
                 "Rozilik bekor qilindi. Ma'lumotlarni qayta ishlashga yana ruxsat "
                 "bermaguningizcha yangi qidiruvlar ishlamaydi. Oldin qayta ishlangan "
                 "hodisalar siyosat va qonun talablari doirasida saqlanadi."
             ),
             "consent_status_active": (
-                "Rozilik faol. Uni bekor qilsangiz, bot yangi qidiruv so'rovlarini "
+                "Rozilik faol. Uni bekor qilish uchun <code>/consent revoke</code> "
+                "buyrug'ini yuboring. Shundan keyin bot yangi qidiruv so'rovlarini "
                 "qayta ishlashni to'xtatadi."
             ),
             "consent_save_failed": (
@@ -386,24 +381,19 @@ LOCALES: dict[str, LocaleCopy] = {
                 "этих данных и показ рекламы. Согласие можно отозвать командой /consent."
             ),
             "consent_accept_button": "✅ Согласен, начать поиск",
-            "consent_decline_button": "Не сейчас",
-            "consent_revoke_button": "Отозвать согласие",
             "consent_privacy_button": "Подробнее о данных",
             "consent_ads_button": "Подробнее о рекламе",
             "consent_first_alert": "Сначала подтвердите согласие.",
             "consent_accepted": "Согласие сохранено.",
             "consent_ready": "Теперь отправьте название товара, фото или голосовое сообщение.",
-            "consent_declined": (
-                "Согласие не дано. Без него Izlaber не работает. Чтобы продолжить поиск, "
-                "подтвердите согласие."
-            ),
             "consent_revoked": (
                 "Согласие отозвано. Новые поисковые запросы будут недоступны, пока вы "
                 "снова не разрешите обработку данных. Уже обработанные события "
                 "сохраняются в пределах политики и требований закона."
             ),
             "consent_status_active": (
-                "Согласие активно. Если отозвать его, бот перестанет обрабатывать "
+                "Согласие активно. Чтобы отозвать его, отправьте команду "
+                "<code>/consent revoke</code>. После этого бот перестанет обрабатывать "
                 "новые поисковые запросы."
             ),
             "consent_save_failed": (
@@ -581,25 +571,19 @@ LOCALES: dict[str, LocaleCopy] = {
                 "this data processing and ad display. You can revoke consent with /consent."
             ),
             "consent_accept_button": "✅ I agree, start search",
-            "consent_decline_button": "Not now",
-            "consent_revoke_button": "Revoke consent",
             "consent_privacy_button": "Data details",
             "consent_ads_button": "Ads details",
             "consent_first_alert": "Confirm consent first.",
             "consent_accepted": "Consent saved.",
             "consent_ready": "Now send a product name, photo, or voice message.",
-            "consent_declined": (
-                "Consent was not given. Izlaber does not work without it. Confirm consent "
-                "to continue searching."
-            ),
             "consent_revoked": (
                 "Consent revoked. New search requests are unavailable until you allow "
                 "data processing again. Events already processed are retained within "
                 "the policy and legal requirements."
             ),
             "consent_status_active": (
-                "Consent is active. If you revoke it, the bot will stop processing new "
-                "search requests."
+                "Consent is active. To revoke it, send <code>/consent revoke</code>. "
+                "After that, the bot will stop processing new search requests."
             ),
             "consent_save_failed": (
                 "Could not save consent. The server is temporarily unavailable, try again later."
@@ -693,7 +677,6 @@ def format_message(
 CONSENT_PROMPT_LANGUAGE_ORDER = ("uz", "ru", "en")
 CONSENT_MULTILINGUAL_BUTTONS = {
     "consent_accept_button": "✅ Roziman / Согласен / I agree",
-    "consent_decline_button": "Hozir emas / Не сейчас / Not now",
     "consent_privacy_button": "Ma'lumotlar / Данные / Data",
     "consent_ads_button": "Reklama / Реклама / Ads",
     "consent_first_alert": "Rozilik kerak / Нужно согласие / Consent required",
@@ -709,6 +692,72 @@ def format_multilingual_consent_message(key: str) -> str:
 
 def consent_multilingual_button(key: str) -> str:
     return CONSENT_MULTILINGUAL_BUTTONS[key]
+
+
+def format_consent_prompt(
+    language_code: str | None,
+    *,
+    privacy_policy_url: str = "",
+    sponsored_ads_policy_url: str = "",
+    multilingual: bool = False,
+) -> str:
+    if multilingual:
+        text = format_multilingual_consent_message("consent_required")
+    else:
+        text = format_message("consent_required", language_code)
+
+    policy_links = format_consent_policy_links(
+        language_code,
+        privacy_policy_url=privacy_policy_url,
+        sponsored_ads_policy_url=sponsored_ads_policy_url,
+        multilingual=multilingual,
+    )
+    if not policy_links:
+        return text
+    return f"{text}\n\n{policy_links}"
+
+
+def format_consent_policy_links(
+    language_code: str | None,
+    *,
+    privacy_policy_url: str = "",
+    sponsored_ads_policy_url: str = "",
+    multilingual: bool = False,
+) -> str:
+    links = []
+    if privacy_policy_url:
+        links.append(
+            _format_policy_link(
+                "consent_privacy_button",
+                language_code,
+                privacy_policy_url,
+                multilingual=multilingual,
+            )
+        )
+    if sponsored_ads_policy_url:
+        links.append(
+            _format_policy_link(
+                "consent_ads_button",
+                language_code,
+                sponsored_ads_policy_url,
+                multilingual=multilingual,
+            )
+        )
+    return "\n".join(links)
+
+
+def _format_policy_link(
+    label_key: str,
+    language_code: str | None,
+    url: str,
+    *,
+    multilingual: bool,
+) -> str:
+    if multilingual:
+        label = consent_multilingual_button(label_key)
+    else:
+        label = format_message(label_key, language_code, html=False)
+    return f"{label}: {escape(url)}"
 
 
 def product_label(key: str, language_code: str | None) -> str:

@@ -192,9 +192,16 @@ def test_consent_middleware_only_allows_exact_consent_command():
         chat=Chat(id=1, type="private"),
         text="/consentfoo iphone",
     )
+    accept_button_message = Message(
+        message_id=4,
+        date=datetime.now(),
+        chat=Chat(id=1, type="private"),
+        text="✅ Roziman / Согласен / I agree",
+    )
 
     assert _is_consent_event(consent_message) is True
     assert _is_consent_event(targeted_consent_message) is True
+    assert _is_consent_event(accept_button_message) is True
     assert _is_consent_event(bypass_attempt) is False
 
 
@@ -231,10 +238,17 @@ def test_rate_limit_event_scopes_target_search_and_ai_inputs():
         chat=Chat(id=1, type="private"),
         voice=Voice(file_id="voice", file_unique_id="voice-1", duration=5),
     )
+    consent_accept_message = Message(
+        message_id=6,
+        date=datetime.now(),
+        chat=Chat(id=1, type="private"),
+        text="✅ Roziman / Согласен / I agree",
+    )
 
     assert SEARCH_SCOPE in _event_scopes(text_message)
     assert SEARCH_SCOPE in _event_scopes(more_message)
     assert SEARCH_SCOPE not in _event_scopes(command_message)
+    assert SEARCH_SCOPE not in _event_scopes(consent_accept_message)
     assert {SEARCH_SCOPE, AI_SCOPE}.issubset(_event_scopes(photo_message))
     assert {SEARCH_SCOPE, AI_SCOPE}.issubset(_event_scopes(voice_message))
 

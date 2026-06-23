@@ -8,6 +8,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from bot.config import Config
+from bot.keyboards.consent import is_consent_accept_text
 from bot.keyboards.main_menu import is_more_button_text
 from bot.locales import format_message, language_from_message, normalize_language_code
 from bot.services.rate_limit import RateLimitRule, rate_limiter
@@ -96,6 +97,8 @@ def _event_scopes(event: TelegramObject) -> set[str]:
 
     text = (event.text or "").strip()
     if not text:
+        return scopes
+    if is_consent_accept_text(text):
         return scopes
     if is_more_button_text(text) or not text.startswith("/"):
         scopes.add(SEARCH_SCOPE)

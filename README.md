@@ -63,10 +63,10 @@ python -m bot.setup_profile
 
 Bot search flow:
 
-- Before search, the bot requires consent for personal data processing and sponsored ads. Without active consent, `/start`, text, photo, voice, guest search, callbacks, and admin commands are blocked and the bot shows a combined Uzbek/Russian/English consent prompt.
+- Before search, the bot requires consent for personal data processing and sponsored ads. Without active consent, `/start`, text, photo, voice, guest search, callbacks, and admin commands are blocked and the bot shows a combined Uzbek/Russian/English consent prompt with one reply keyboard acceptance button. Policy URLs are shown as text links in the prompt.
 - Consent decisions are stored in the server database as `UserConsent` records. `BOT_CONSENT_VERSION` and `USER_CONSENT_VERSION` must match; bump the version whenever the consent text or covered data uses materially change.
 - Public policy pages are served by Django at `/legal/privacy/` and `/legal/sponsored-ads/`. If `BOT_PRIVACY_POLICY_URL` or `BOT_SPONSORED_ADS_POLICY_URL` are empty, the bot derives them from `BOT_PUBLIC_BASE_URL`.
-- Users can review or revoke consent with `/consent`. Revoked/declined users can accept again from the same prompt.
+- Users can review consent with `/consent` and revoke it with `/consent revoke`. Users without active consent can accept again from the same one-button prompt.
 - Implementation notes and legal-source links are in `docs/consent.md`.
 - User sends a product name.
 - User can also send a product photo; the bot uses a visual matching pipeline to find similar product cards.

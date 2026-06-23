@@ -9,16 +9,15 @@ from aiogram.types import CallbackQuery, Message, TelegramObject
 from bot.config import Config
 from bot.keyboards.consent import (
     CONSENT_ACCEPT_CALLBACK,
-    CONSENT_DECLINE_CALLBACK,
     CONSENT_REVOKE_CALLBACK,
     consent_request_keyboard,
+    is_consent_accept_text,
 )
-from bot.locales import consent_multilingual_button, format_multilingual_consent_message
+from bot.locales import consent_multilingual_button, format_consent_prompt
 from bot.services.consent_store import user_consents
 
 CONSENT_CALLBACKS = {
     CONSENT_ACCEPT_CALLBACK,
-    CONSENT_DECLINE_CALLBACK,
     CONSENT_REVOKE_CALLBACK,
 }
 
@@ -52,12 +51,21 @@ def _is_consent_event(event: TelegramObject) -> bool:
         return event.data in CONSENT_CALLBACKS
     if isinstance(event, Message):
         command = (event.text or "").strip().split(maxsplit=1)[0].casefold()
-        return command == "/consent" or command.startswith("/consent@")
+        return (
+            command == "/consent"
+            or command.startswith("/consent@")
+            or is_consent_accept_text(event.text)
+        )
     return False
 
 
 async def _send_consent_prompt(event: TelegramObject, config: Config) -> None:
-    text = format_multilingual_consent_message("consent_required")
+    text = format_consent_prompt(
+        None,
+        privacy_policy_url=config.privacy_policy_url,
+        sponsored_ads_policy_url=config.sponsored_ads_policy_url,
+        multilingual=True,
+    )
     keyboard = consent_request_keyboard(None, config, multilingual=True)
 
     if isinstance(event, CallbackQuery):
