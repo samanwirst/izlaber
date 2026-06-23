@@ -74,6 +74,10 @@ Bot search flow:
 - Bot sends 5 product cards with cover, price, rating, and link.
 - The localized `Yana` / `Еще` / `More` keyboard button sends the next 5 cards for the latest query of that exact chat/user.
 - Any new product text resets that user's search offset, so old searches are not mixed.
+- Bot-side rate limiting is enabled by default. `BOT_RATE_LIMIT_MAX_EVENTS` caps all
+  interactions, `BOT_SEARCH_RATE_LIMIT_MAX_EVENTS` caps text/photo/voice/More searches,
+  and `BOT_AI_RATE_LIMIT_MAX_EVENTS` caps photo/voice requests that can spend AI tokens.
+  `OPENAI_STATUS_NOTIFY_USER_ID` bypasses these limits by default for admin checks.
 
 Analytics:
 

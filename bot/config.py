@@ -61,6 +61,14 @@ class Config:
     openai_balance_probe_interval: float = 60.0
     openai_startup_probe_enabled: bool = True
     guest_search_enabled: bool = True
+    rate_limit_enabled: bool = True
+    rate_limit_admin_bypass: bool = True
+    rate_limit_max_events: int = 30
+    rate_limit_window_seconds: float = 60.0
+    search_rate_limit_max_events: int = 12
+    search_rate_limit_window_seconds: float = 60.0
+    ai_rate_limit_max_events: int = 12
+    ai_rate_limit_window_seconds: float = 3600.0
 
 
 def load_config() -> Config:
@@ -171,6 +179,28 @@ def load_config() -> Config:
         in {"1", "true", "yes"},
         guest_search_enabled=getenv("BOT_GUEST_SEARCH_ENABLED", "true").lower()
         in {"1", "true", "yes"},
+        rate_limit_enabled=getenv("BOT_RATE_LIMIT_ENABLED", "true").lower()
+        in {"1", "true", "yes"},
+        rate_limit_admin_bypass=getenv("BOT_RATE_LIMIT_ADMIN_BYPASS", "true").lower()
+        in {"1", "true", "yes"},
+        rate_limit_max_events=max(1, int(getenv("BOT_RATE_LIMIT_MAX_EVENTS", "30"))),
+        rate_limit_window_seconds=max(
+            1.0,
+            float(getenv("BOT_RATE_LIMIT_WINDOW_SECONDS", "60")),
+        ),
+        search_rate_limit_max_events=max(
+            1,
+            int(getenv("BOT_SEARCH_RATE_LIMIT_MAX_EVENTS", "12")),
+        ),
+        search_rate_limit_window_seconds=max(
+            1.0,
+            float(getenv("BOT_SEARCH_RATE_LIMIT_WINDOW_SECONDS", "60")),
+        ),
+        ai_rate_limit_max_events=max(1, int(getenv("BOT_AI_RATE_LIMIT_MAX_EVENTS", "12"))),
+        ai_rate_limit_window_seconds=max(
+            1.0,
+            float(getenv("BOT_AI_RATE_LIMIT_WINDOW_SECONDS", "3600")),
+        ),
     )
 
 

@@ -3,7 +3,7 @@ from datetime import datetime
 from uuid import UUID
 
 import pytest
-from aiogram.types import Chat, Message, PhotoSize
+from aiogram.types import Chat, Message, PhotoSize, Voice
 
 from bot.config import BotConfig, Config, _policy_url
 from bot.handlers.admin import _format_usd, _is_openai_status_admin
@@ -20,6 +20,7 @@ from bot.handlers.common import (
     _voice_search_available,
 )
 from bot.middlewares.consent import _is_consent_event
+from bot.middlewares.rate_limit import AI_SCOPE, SEARCH_SCOPE, _event_scopes, _format_retry_after
 from bot.services.ai_audio import _language_name, _transcription_prompt
 from bot.services.ai_reranker import (
     OPENAI_PROBE_MAX_OUTPUT_TOKENS,
@@ -39,6 +40,7 @@ from bot.services.api_client import (
 )
 from bot.services.consent_store import UserConsentStore
 from bot.services.openai_billing import OpenAICostSummary, _merge_cost_buckets
+from bot.services.rate_limit import RateLimitRule, SlidingWindowRateLimiter
 from bot.services.search_state import SearchStateStore
 
 
@@ -195,6 +197,71 @@ def test_consent_middleware_only_allows_exact_consent_command():
     assert _is_consent_event(bypass_attempt) is False
 
 
+def test_rate_limit_event_scopes_target_search_and_ai_inputs():
+    text_message = Message(
+        message_id=1,
+        date=datetime.now(),
+        chat=Chat(id=1, type="private"),
+        text="iphone",
+    )
+    more_message = Message(
+        message_id=2,
+        date=datetime.now(),
+        chat=Chat(id=1, type="private"),
+        text="ещё",
+    )
+    command_message = Message(
+        message_id=3,
+        date=datetime.now(),
+        chat=Chat(id=1, type="private"),
+        text="/start",
+    )
+    photo_message = Message(
+        message_id=4,
+        date=datetime.now(),
+        chat=Chat(id=1, type="private"),
+        photo=[
+            PhotoSize(file_id="photo", file_unique_id="photo-1", width=200, height=200),
+        ],
+    )
+    voice_message = Message(
+        message_id=5,
+        date=datetime.now(),
+        chat=Chat(id=1, type="private"),
+        voice=Voice(file_id="voice", file_unique_id="voice-1", duration=5),
+    )
+
+    assert SEARCH_SCOPE in _event_scopes(text_message)
+    assert SEARCH_SCOPE in _event_scopes(more_message)
+    assert SEARCH_SCOPE not in _event_scopes(command_message)
+    assert {SEARCH_SCOPE, AI_SCOPE}.issubset(_event_scopes(photo_message))
+    assert {SEARCH_SCOPE, AI_SCOPE}.issubset(_event_scopes(voice_message))
+
+
+def test_sliding_window_rate_limiter_rolls_back_partial_many_checks():
+    now = 100.0
+
+    def clock() -> float:
+        return now
+
+    limiter = SlidingWindowRateLimiter(clock=clock)
+    general = RateLimitRule(scope="general", max_events=10, window_seconds=60)
+    search = RateLimitRule(scope="search", max_events=1, window_seconds=60)
+
+    assert limiter.check_many(user_id=1, rules=[general, search]).allowed is True
+    blocked = limiter.check_many(user_id=1, rules=[general, search])
+
+    assert blocked.allowed is False
+    assert blocked.scope == "search"
+    assert limiter.check(user_id=1, rule=general).allowed is True
+
+
+def test_retry_after_format_is_localized():
+    assert _format_retry_after(5, "ru") == "5 сек."
+    assert _format_retry_after(65, "en") == "2 min"
+    assert _format_retry_after(60, "uz") == "1 daqiqa"
+
+
 def test_guest_query_strips_bot_username():
     assert _strip_bot_username("@MarketBot iphone 15", "marketbot") == "iphone 15"
     assert _strip_bot_username("найди @MarketBot ноутбук", "marketbot") == "найди ноутбук"
@@ -334,6 +401,17 @@ def test_config_exposes_voice_defaults():
     assert config.openai_voice_timeout == 20.0
     assert config.openai_voice_max_download_bytes == 8_000_000
     assert config.openai_voice_max_duration_seconds == 180
+
+
+def test_config_exposes_rate_limit_defaults():
+    config = Config(bot=BotConfig(token="test"))
+
+    assert config.rate_limit_enabled is True
+    assert config.rate_limit_admin_bypass is True
+    assert config.rate_limit_max_events == 30
+    assert config.search_rate_limit_max_events == 12
+    assert config.ai_rate_limit_max_events == 12
+    assert config.ai_rate_limit_window_seconds == 3600.0
 
 
 def test_voice_transcription_prompt_uses_language_names_not_codes():
