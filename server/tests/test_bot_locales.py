@@ -8,6 +8,8 @@ from bot.keyboards.product import product_card_keyboard
 from bot.locales import (
     LOCALES,
     PROFILE_LANGUAGE_CODES,
+    consent_multilingual_button,
+    format_multilingual_consent_message,
     language_from_message,
     locale_for,
     normalize_language_code,
@@ -66,6 +68,11 @@ def test_keyboards_are_localized():
         sponsored_ads_policy_url="https://example.com/ads",
     )
     consent_keyboard = consent_request_keyboard("ru", consent_config)
+    consent_multilingual_keyboard = consent_request_keyboard(
+        "uz",
+        consent_config,
+        multilingual=True,
+    )
     consent_status = consent_status_keyboard("en", consent_config)
 
     assert uz_keyboard.keyboard[0][0].text == "Yana ko'rsatish"
@@ -81,6 +88,18 @@ def test_keyboards_are_localized():
     assert [button.url for button in consent_keyboard.inline_keyboard[2]] == [
         "https://example.com/privacy",
         "https://example.com/ads",
+    ]
+    assert (
+        consent_multilingual_keyboard.inline_keyboard[0][0].text
+        == "✅ Roziman / Согласен / I agree"
+    )
+    assert (
+        consent_multilingual_keyboard.inline_keyboard[1][0].text
+        == "Hozir emas / Не сейчас / Not now"
+    )
+    assert [button.text for button in consent_multilingual_keyboard.inline_keyboard[2]] == [
+        "Ma'lumotlar / Данные / Data",
+        "Reklama / Реклама / Ads",
     ]
     assert consent_status.inline_keyboard[0][0].text == "Revoke consent"
 
@@ -120,3 +139,14 @@ def test_product_copy_pluralization():
     assert review_text(8, "uz") == "8 sharh"
     assert product_noun(5, "ru") == "товаров"
     assert locale_for("fr").code == "uz"
+
+
+def test_consent_prompt_can_render_before_language_choice():
+    prompt = format_multilingual_consent_message("consent_required")
+
+    assert "Tovar qidirish uchun" in prompt
+    assert "Чтобы искать товары" in prompt
+    assert "To search for products" in prompt
+    assert consent_multilingual_button("consent_first_alert") == (
+        "Rozilik kerak / Нужно согласие / Consent required"
+    )

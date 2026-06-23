@@ -16,7 +16,7 @@ env = environ.Env(
     ANALYTICS_COOKIE_MAX_AGE_DAYS=(int, 180),
     ANALYTICS_HASH_IP=(bool, False),
     ANALYTICS_IP_HASH_SALT=(str, ""),
-    USER_CONSENT_VERSION=(str, "2026-06-consent-v2"),
+    USER_CONSENT_VERSION=(str, "2026-06-consent-v3"),
 )
 environ.Env.read_env(ROOT_DIR / ".env")
 environ.Env.read_env(BASE_DIR / ".env")

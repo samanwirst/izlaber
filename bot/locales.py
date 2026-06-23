@@ -200,11 +200,12 @@ LOCALES: dict[str, LocaleCopy] = {
             ),
             "consent_revoked": (
                 "Rozilik bekor qilindi. Ma'lumotlarni qayta ishlashga yana ruxsat "
-                "bermaguningizcha mahsulot qidiruvi ishlamaydi."
+                "bermaguningizcha yangi qidiruvlar ishlamaydi. Oldin qayta ishlangan "
+                "hodisalar siyosat va qonun talablari doirasida saqlanadi."
             ),
             "consent_status_active": (
-                "Rozilik faol. Uni bekor qilsangiz, bot mahsulot qidiruvlarini qayta "
-                "ishlashni to'xtatadi."
+                "Rozilik faol. Uni bekor qilsangiz, bot yangi qidiruv so'rovlarini "
+                "qayta ishlashni to'xtatadi."
             ),
             "consent_save_failed": (
                 "Rozilikni saqlab bo'lmadi. Server vaqtincha ishlamayapti, keyinroq urinib ko'ring."
@@ -397,12 +398,13 @@ LOCALES: dict[str, LocaleCopy] = {
                 "подтвердите согласие."
             ),
             "consent_revoked": (
-                "Согласие отозвано. Поиск товаров будет недоступен, пока вы снова не "
-                "разрешите обработку данных."
+                "Согласие отозвано. Новые поисковые запросы будут недоступны, пока вы "
+                "снова не разрешите обработку данных. Уже обработанные события "
+                "сохраняются в пределах политики и требований закона."
             ),
             "consent_status_active": (
                 "Согласие активно. Если отозвать его, бот перестанет обрабатывать "
-                "поисковые запросы."
+                "новые поисковые запросы."
             ),
             "consent_save_failed": (
                 "Не удалось сохранить согласие. Сервер временно недоступен, попробуйте позже."
@@ -591,12 +593,13 @@ LOCALES: dict[str, LocaleCopy] = {
                 "to continue searching."
             ),
             "consent_revoked": (
-                "Consent revoked. Product search is unavailable until you allow data "
-                "processing again."
+                "Consent revoked. New search requests are unavailable until you allow "
+                "data processing again. Events already processed are retained within "
+                "the policy and legal requirements."
             ),
             "consent_status_active": (
-                "Consent is active. If you revoke it, the bot will stop processing search "
-                "requests."
+                "Consent is active. If you revoke it, the bot will stop processing new "
+                "search requests."
             ),
             "consent_save_failed": (
                 "Could not save consent. The server is temporarily unavailable, try again later."
@@ -685,6 +688,27 @@ def format_message(
         else:
             prepared[name] = value
     return template.format(**prepared)
+
+
+CONSENT_PROMPT_LANGUAGE_ORDER = ("uz", "ru", "en")
+CONSENT_MULTILINGUAL_BUTTONS = {
+    "consent_accept_button": "✅ Roziman / Согласен / I agree",
+    "consent_decline_button": "Hozir emas / Не сейчас / Not now",
+    "consent_privacy_button": "Ma'lumotlar / Данные / Data",
+    "consent_ads_button": "Reklama / Реклама / Ads",
+    "consent_first_alert": "Rozilik kerak / Нужно согласие / Consent required",
+}
+
+
+def format_multilingual_consent_message(key: str) -> str:
+    return "\n\n".join(
+        format_message(key, language_code)
+        for language_code in CONSENT_PROMPT_LANGUAGE_ORDER
+    )
+
+
+def consent_multilingual_button(key: str) -> str:
+    return CONSENT_MULTILINGUAL_BUTTONS[key]
 
 
 def product_label(key: str, language_code: str | None) -> str:

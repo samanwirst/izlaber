@@ -20,7 +20,7 @@ class Config:
     product_search_limit: int = 10
     server_api_timeout: float = 10.0
     consent_enabled: bool = True
-    consent_version: str = "2026-06-consent-v2"
+    consent_version: str = "2026-06-consent-v3"
     privacy_policy_url: str = ""
     sponsored_ads_policy_url: str = ""
     analytics_enabled: bool = True
@@ -103,8 +103,8 @@ def load_config() -> Config:
         server_api_timeout=float(getenv("BOT_SERVER_API_TIMEOUT", "10")),
         consent_enabled=getenv("BOT_CONSENT_ENABLED", "true").lower()
         in {"1", "true", "yes"},
-        consent_version=getenv("BOT_CONSENT_VERSION", "2026-06-consent-v2").strip()
-        or "2026-06-consent-v2",
+        consent_version=getenv("BOT_CONSENT_VERSION", "2026-06-consent-v3").strip()
+        or "2026-06-consent-v3",
         privacy_policy_url=privacy_policy_url,
         sponsored_ads_policy_url=sponsored_ads_policy_url,
         analytics_enabled=getenv("BOT_ANALYTICS_ENABLED", "true").lower()

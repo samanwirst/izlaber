@@ -13,7 +13,12 @@ from bot.keyboards.consent import (
     consent_status_keyboard,
 )
 from bot.keyboards.main_menu import main_menu_keyboard
-from bot.locales import format_message, language_from_message, locale_for
+from bot.locales import (
+    format_message,
+    format_multilingual_consent_message,
+    language_from_message,
+    locale_for,
+)
 from bot.services.api_client import ServerAPIClient, ServerAPIError
 from bot.services.consent_store import user_consents
 
@@ -32,8 +37,8 @@ async def command_consent(message: Message, config: Config) -> None:
         return
 
     await message.answer(
-        format_message("consent_required", language),
-        reply_markup=consent_request_keyboard(language, config),
+        format_multilingual_consent_message("consent_required"),
+        reply_markup=consent_request_keyboard(language, config, multilingual=True),
     )
 
 
@@ -71,8 +76,8 @@ async def choose_consent(callback: CallbackQuery, config: Config) -> None:
         return
 
     await callback.message.edit_text(
-        format_message("consent_declined", language),
-        reply_markup=consent_request_keyboard(language, config),
+        format_multilingual_consent_message("consent_declined"),
+        reply_markup=consent_request_keyboard(language, config, multilingual=True),
     )
 
 

@@ -63,7 +63,7 @@ python -m bot.setup_profile
 
 Bot search flow:
 
-- Before search, the bot requires consent for personal data processing and sponsored ads. Without active consent, `/start`, text, photo, voice, guest search, callbacks, and admin commands are blocked and the bot shows the consent prompt again.
+- Before search, the bot requires consent for personal data processing and sponsored ads. Without active consent, `/start`, text, photo, voice, guest search, callbacks, and admin commands are blocked and the bot shows a combined Uzbek/Russian/English consent prompt.
 - Consent decisions are stored in the server database as `UserConsent` records. `BOT_CONSENT_VERSION` and `USER_CONSENT_VERSION` must match; bump the version whenever the consent text or covered data uses materially change.
 - Public policy pages are served by Django at `/legal/privacy/` and `/legal/sponsored-ads/`. If `BOT_PRIVACY_POLICY_URL` or `BOT_SPONSORED_ADS_POLICY_URL` are empty, the bot derives them from `BOT_PUBLIC_BASE_URL`.
 - Users can review or revoke consent with `/consent`. Revoked/declined users can accept again from the same prompt.
@@ -71,8 +71,8 @@ Bot search flow:
 - User sends a product name.
 - User can also send a product photo; the bot uses a visual matching pipeline to find similar product cards.
 - Bot detects the user's Telegram app language and answers in Uzbek, Russian, or English.
-- Bot sends 5 product cards with cover, price, rating, and link.
-- The localized `Yana` / `Еще` / `More` keyboard button sends the next 5 cards for the latest query of that exact chat/user.
+- Bot sends 10 product cards with cover, price, rating, and link.
+- The localized `Yana` / `Еще` / `More` keyboard button sends the next 10 cards for the latest query of that exact chat/user.
 - Any new product text resets that user's search offset, so old searches are not mixed.
 - Bot-side rate limiting is enabled by default. `BOT_RATE_LIMIT_MAX_EVENTS` caps all
   interactions, `BOT_SEARCH_RATE_LIMIT_MAX_EVENTS` caps text/photo/voice/More searches,

@@ -18,6 +18,8 @@ Practical rules encoded in the bot:
 - Consent can be revoked; the bot exposes `/consent` and records `revoked_at`.
 - Advertising through a telecommunications service requires prior subscriber consent.
 - Without active consent, the bot does not process search requests.
+- Revocation must remain available. Do not hide or disable the revoke action without
+  a fresh legal review.
 
 ## Covered Bot Data
 
@@ -31,6 +33,8 @@ The consent prompt covers:
 ## Runtime Behavior
 
 - `BOT_CONSENT_ENABLED=true` enables the aiogram middleware gate.
+- Before consent is accepted, the bot shows the consent prompt in Uzbek, Russian, and
+  English in one message because it cannot rely on stored language preferences yet.
 - `BOT_CONSENT_VERSION` is stored with every user decision.
 - `USER_CONSENT_VERSION` is the server fallback/current version; keep it equal to
   `BOT_CONSENT_VERSION`.

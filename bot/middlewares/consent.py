@@ -13,7 +13,7 @@ from bot.keyboards.consent import (
     CONSENT_REVOKE_CALLBACK,
     consent_request_keyboard,
 )
-from bot.locales import format_message, language_from_message
+from bot.locales import consent_multilingual_button, format_multilingual_consent_message
 from bot.services.consent_store import user_consents
 
 CONSENT_CALLBACKS = {
@@ -57,12 +57,11 @@ def _is_consent_event(event: TelegramObject) -> bool:
 
 
 async def _send_consent_prompt(event: TelegramObject, config: Config) -> None:
-    language = language_from_message(event)
-    text = format_message("consent_required", language)
-    keyboard = consent_request_keyboard(language, config)
+    text = format_multilingual_consent_message("consent_required")
+    keyboard = consent_request_keyboard(None, config, multilingual=True)
 
     if isinstance(event, CallbackQuery):
-        await event.answer(format_message("consent_first_alert", language, html=False))
+        await event.answer(consent_multilingual_button("consent_first_alert"))
         if event.message is not None:
             await event.message.answer(text, reply_markup=keyboard)
         return
