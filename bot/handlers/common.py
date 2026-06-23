@@ -42,6 +42,7 @@ router = Router(name="common")
 logger = logging.getLogger(__name__)
 
 TOKEN_RE = re.compile(r"[0-9a-zа-яё]+", re.IGNORECASE)
+LATIN_RE = re.compile(r"[a-z]", re.IGNORECASE)
 UZUM_PRODUCT_ID_RE = re.compile(
     r"(?:https?://)?(?:www\.)?uzum\.uz/\S*/product/\S+-(\d+)",
     re.IGNORECASE,
@@ -112,6 +113,42 @@ COMPRESSION_WEAR_TOKENS = {
     "футболки",
     "шорты",
     "штаны",
+}
+PHOTO_TEXT_FALLBACK_OBJECT_TOKENS = {
+    "батончик",
+    "батончики",
+    "вафля",
+    "вафли",
+    "вода",
+    "газировка",
+    "жвачка",
+    "йогурт",
+    "карамель",
+    "кола",
+    "конфета",
+    "конфеты",
+    "кофе",
+    "лапша",
+    "леденец",
+    "леденцы",
+    "молоко",
+    "напиток",
+    "напитки",
+    "паста",
+    "печенье",
+    "пюре",
+    "сок",
+    "соус",
+    "снек",
+    "снэк",
+    "снэки",
+    "снеки",
+    "чай",
+    "чипс",
+    "чипсы",
+    "шоколад",
+    "шоколадка",
+    "шоколадный",
 }
 PRICE_STOP_TOKENS = {
     "до",
@@ -309,7 +346,11 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
             config=config,
         )
         if photo_query is not None:
-            used_query, ranked_products = await _load_photo_ranked_candidates(
+            (
+                used_query,
+                ranked_products,
+                used_text_fallback,
+            ) = await _load_photo_ranked_candidates(
                 image_bytes=image_bytes,
                 photo_query=photo_query,
                 config=config,
@@ -339,7 +380,7 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
             await _replace_status_message(
                 status_message,
                 format_message(
-                    "photo_found_intro",
+                    "photo_text_fallback_intro" if used_text_fallback else "photo_found_intro",
                     language,
                     query=used_query,
                     count=len(products),
@@ -1131,11 +1172,12 @@ async def _load_photo_ranked_candidates(
     photo_query: PhotoSearchQuery,
     config: Config,
     message: Message,
-) -> tuple[str, list[ProductDTO] | None]:
+) -> tuple[str, list[ProductDTO] | None, bool]:
     language = language_from_message(message)
     queries = _photo_search_queries(photo_query)
     query_limit = _photo_candidate_query_limit(config, len(queries))
     products: list[ProductDTO] = []
+    used_query = queries[0] if queries else photo_query.query
 
     try:
         async with ServerAPIClient(
@@ -1144,13 +1186,16 @@ async def _load_photo_ranked_candidates(
             timeout=config.server_api_timeout,
         ) as client:
             for query in queries:
+                query_products = await client.search_products(
+                    query=query,
+                    limit=query_limit,
+                    offset=0,
+                )
+                if query_products and not products:
+                    used_query = query
                 products = _merge_unique_products(
                     products,
-                    await client.search_products(
-                        query=query,
-                        limit=query_limit,
-                        offset=0,
-                    ),
+                    query_products,
                 )
                 if len(products) >= config.openai_photo_candidate_limit:
                     break
@@ -1161,11 +1206,11 @@ async def _load_photo_ranked_candidates(
             disable_web_page_preview=True,
             reply_markup=main_menu_keyboard(language),
         )
-        return photo_query.query, None
+        return used_query, None, False
 
     products = products[: max(config.product_search_limit, config.openai_photo_candidate_limit)]
     if not products:
-        return photo_query.query, []
+        return used_query, [], False
 
     ranked_products = await rerank_photo_products_by_image(
         image_bytes=image_bytes,
@@ -1176,21 +1221,29 @@ async def _load_photo_ranked_candidates(
     )
     if ranked_products is None:
         if config.openai_photo_text_fallback_enabled:
-            return photo_query.query, products
+            return used_query, products, True
         await message.answer(
             format_message("photo_ai_unavailable", language),
             reply_markup=main_menu_keyboard(language),
         )
-        return photo_query.query, None
+        return used_query, None, False
     if ranked_products:
-        return photo_query.query, ranked_products
+        return used_query, ranked_products, False
+    safe_text_fallback = _photo_text_fallback_products(
+        photo_query=photo_query,
+        products=products,
+        limit=max(config.product_search_limit, config.openai_photo_candidate_limit),
+    )
+    if safe_text_fallback:
+        return used_query, safe_text_fallback, True
     if config.openai_photo_text_fallback_enabled:
-        return photo_query.query, products
-    return photo_query.query, []
+        return used_query, products, True
+    return used_query, [], False
 
 
 def _photo_search_queries(photo_query: PhotoSearchQuery) -> list[str]:
     raw_queries = [
+        _photo_core_query(photo_query),
         photo_query.query,
         *photo_query.alternative_queries,
         " ".join(
@@ -1215,6 +1268,43 @@ def _photo_search_queries(photo_query: PhotoSearchQuery) -> list[str]:
         if len(queries) >= 5:
             break
     return queries or [photo_query.query]
+
+
+def _photo_core_query(photo_query: PhotoSearchQuery) -> str:
+    parts = []
+    if photo_query.brand and LATIN_RE.search(photo_query.brand):
+        parts.append(photo_query.brand)
+    if photo_query.object_type:
+        parts.append(photo_query.object_type)
+    if parts:
+        return " ".join(parts)
+    return photo_query.query
+
+
+def _photo_text_fallback_products(
+    *,
+    photo_query: PhotoSearchQuery,
+    products: list[ProductDTO],
+    limit: int,
+) -> list[ProductDTO]:
+    object_tokens = set(_query_tokens(photo_query.object_type))
+    allowed_tokens = object_tokens & PHOTO_TEXT_FALLBACK_OBJECT_TOKENS
+    if not allowed_tokens:
+        return []
+
+    filtered: list[ProductDTO] = []
+    for product in products:
+        haystack = " ".join(
+            part
+            for part in (product.title, product.category_path_text)
+            if part
+        )
+        product_tokens = set(_query_tokens(haystack))
+        if allowed_tokens & product_tokens:
+            filtered.append(product)
+        if len(filtered) >= limit:
+            break
+    return filtered
 
 
 def _photo_candidate_query_limit(config: Config, query_count: int) -> int:

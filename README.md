@@ -70,6 +70,7 @@ Bot search flow:
 - Implementation notes and legal-source links are in `docs/consent.md`.
 - User sends a product name.
 - User can also send a product photo; the bot uses a visual matching pipeline to find similar product cards.
+- If a packaged snack/drink photo is recognized but no exact visual match exists, the bot can show clearly labeled closest text/category alternatives instead of mixing unrelated homonyms.
 - Bot detects the user's Telegram app language and answers in Uzbek, Russian, or English.
 - Bot sends 10 product cards with cover, price, rating, and link.
 - The localized `Yana` / `Еще` / `More` keyboard button sends the next 10 cards for the latest query of that exact chat/user.

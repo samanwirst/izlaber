@@ -15,6 +15,7 @@ from bot.handlers.common import (
     _merge_unique_products,
     _photo_candidate_query_limit,
     _photo_search_queries,
+    _photo_text_fallback_products,
     _replace_status_message,
     _search_expansion_allowed,
     _select_photo_for_vision,
@@ -45,7 +46,7 @@ from bot.services.ai_reranker import (
     rerank_products,
 )
 from bot.services.ai_runtime import AIRuntimeState
-from bot.services.ai_vision import parse_photo_search_output
+from bot.services.ai_vision import PhotoSearchQuery, parse_photo_search_output
 from bot.services.api_client import (
     ProductDTO,
     _response_rows,
@@ -522,11 +523,92 @@ def test_photo_search_queries_include_visible_text_and_brand():
     )
 
     assert _photo_search_queries(parsed) == [
+        "CeraVe крем",
         "cerave увлажняющий крем",
         "церава крем",
         "moisturizing cream",
         "CeraVe Moisturising Cream крем",
     ]
+
+
+def test_photo_search_queries_prioritize_latin_brand_and_object_type():
+    parsed = parse_photo_search_output(
+        """
+        {
+          "query": "Snickers сникерс батончик не тормози",
+          "alternative_queries": ["сникерс батончик", "Snickers chocolate bar"],
+          "confidence": "high",
+          "visible_product": "Snickers chocolate bar",
+          "object_type": "батончик",
+          "brand": "Snickers",
+          "visible_text": "Snickers не тормози",
+          "key_features": ["коричневая упаковка", "батончик"]
+        }
+        """
+    )
+
+    assert _photo_search_queries(parsed)[0] == "Snickers батончик"
+
+
+def test_photo_text_fallback_keeps_only_matching_snack_type():
+    photo_query = PhotoSearchQuery(
+        query="Snickers сникерс батончик",
+        alternative_queries=[],
+        confidence="high",
+        visible_product="Snickers chocolate bar",
+        object_type="батончик",
+        brand="Snickers",
+        visible_text="Snickers",
+        key_features=["шоколад"],
+    )
+    chocolate_bar = product(1, "Батончик шоколадный Toren Choco Dino")
+    shoes = product(2, "Кроссовки мужские сникерсы")
+    book = product(3, "Не тормози! Контроль над временем")
+
+    assert _photo_text_fallback_products(
+        photo_query=photo_query,
+        products=[shoes, book, chocolate_bar],
+        limit=10,
+    ) == [chocolate_bar]
+
+
+def test_photo_text_fallback_supports_packaged_drinks_but_not_broad_cosmetics():
+    drink_query = PhotoSearchQuery(
+        query="Coca Cola напиток",
+        alternative_queries=[],
+        confidence="high",
+        visible_product="cola bottle",
+        object_type="напиток",
+        brand="Coca Cola",
+        visible_text="Coca Cola",
+        key_features=["бутылка"],
+    )
+    cream_query = PhotoSearchQuery(
+        query="CeraVe крем",
+        alternative_queries=[],
+        confidence="high",
+        visible_product="cream jar",
+        object_type="крем",
+        brand="CeraVe",
+        visible_text="CeraVe",
+        key_features=["банка"],
+    )
+    cola = product(1, "Газированный напиток Cola, 1.5 л")
+    cream = product(2, "Увлажняющий крем для лица")
+
+    assert _photo_text_fallback_products(
+        photo_query=drink_query,
+        products=[cola, cream],
+        limit=10,
+    ) == [cola]
+    assert (
+        _photo_text_fallback_products(
+            photo_query=cream_query,
+            products=[cream],
+            limit=10,
+        )
+        == []
+    )
 
 
 def test_photo_candidate_query_limit_splits_budget():
