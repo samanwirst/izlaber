@@ -18,6 +18,7 @@ async def track_message_event(
     config: Config,
     message: Message,
     event_type: str,
+    telegram_user_id: int | None = None,
     language_code: str | None = None,
     input_type: str = "",
     query: str = "",
@@ -34,7 +35,9 @@ async def track_message_event(
         "event_id": str(uuid4()),
         "event_type": event_type,
         "source": "bot",
-        "telegram_user_id": user.id if user else None,
+        "telegram_user_id": (
+            telegram_user_id if telegram_user_id is not None else user.id if user else None
+        ),
         "chat_id": message.chat.id,
         "message_id": message.message_id,
         "language_code": language_code or language_from_message(message),

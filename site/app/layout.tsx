@@ -3,7 +3,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Izlaber Analytics",
-  description: "Professional analytics dashboard for Izlaber marketplace intelligence.",
+  description:
+    "Аналитика поисков, карточек и переходов Izlaber: популярные запросы, языки, типы поиска, клики по товарам и динамика активности.",
 };
 
 export default function RootLayout({

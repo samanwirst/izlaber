@@ -45,17 +45,19 @@ ul {
 
 def privacy_policy(_request):
     return _html_response(
-        title="Izlaber Privacy Policy",
+        title="Политика конфиденциальности Izlaber",
         body="""
 <main>
-  <h1>Izlaber Privacy Policy</h1>
+  <h1>Политика конфиденциальности Izlaber</h1>
   <p class="updated">Last updated: 2026-06-23</p>
 
   <section lang="uz">
     <h2>Maxfiylik siyosati</h2>
     <p>
-      Izlaber Telegram botida mahsulot qidiruvini ishlatish uchun sizdan rozilik
-      so'raladi. Rozilik berilmasa, bot qidiruv so'rovlarini qayta ishlamaydi.
+      Izlaber mahsulot qidiruvi, bot ishlashi, analitika va reklama takliflarini
+      ko'rsatish uchun zarur bo'lgan ma'lumotlarnigina qayta ishlaydi: Telegram ID,
+      profil tili, qidiruv so'rovlari, yuborilgan foto yoki ovozli xabarlar,
+      kartochka ko'rishlari va havolalarga bosishlar.
     </p>
     <p>Biz quyidagi ma'lumotlarni qayta ishlashimiz mumkin:</p>
     <ul>
@@ -75,8 +77,10 @@ def privacy_policy(_request):
   <section lang="ru">
     <h2>Политика конфиденциальности</h2>
     <p>
-      Для работы Izlaber в Telegram бот запрашивает согласие на обработку данных.
-      Без согласия бот не обрабатывает поисковые запросы.
+      Izlaber обрабатывает только данные, необходимые для поиска товаров, работы
+      бота, аналитики и показа рекламных предложений: Telegram ID, язык профиля,
+      поисковые запросы, отправленные фото или голосовые сообщения, показы карточек
+      и переходы по ссылкам.
     </p>
     <p>Мы можем обрабатывать следующие данные:</p>
     <ul>
@@ -95,8 +99,9 @@ def privacy_policy(_request):
   <section lang="en">
     <h2>Privacy Policy</h2>
     <p>
-      Izlaber asks for consent before processing Telegram bot requests. Without
-      active consent, the bot does not process product searches.
+      Izlaber processes only the data needed for product search, bot operation,
+      analytics, and advertising offers: Telegram ID, profile language, search
+      queries, submitted photos or voice messages, card impressions, and link clicks.
     </p>
     <p>We may process the following data:</p>
     <ul>
@@ -118,18 +123,19 @@ def privacy_policy(_request):
 
 def sponsored_ads_policy(_request):
     return _html_response(
-        title="Izlaber Sponsored Advertising",
+        title="Рекламные предложения в Izlaber",
         body="""
 <main>
-  <h1>Izlaber Sponsored Advertising</h1>
+  <h1>Рекламные предложения в Izlaber</h1>
   <p class="updated">Last updated: 2026-06-23</p>
 
   <section lang="uz">
     <h2>Homiylik reklamasi</h2>
     <p>
-      Izlaber mahsulot qidiruvi davomida homiylik kartochkalari, maxsus takliflar
-      yoki reklama xabarlarini ko'rsatishi mumkin. Bunday reklama faqat foydalanuvchi
-      roziligidan keyin ishlatiladi.
+      Izlaber'da hamkorlar yoki sotuvchilardan reklama takliflari ko'rsatilishi
+      mumkin. Bunday kartochkalar odatiy natijalardan “Reklama taklifi” belgisi
+      bilan ajratilishi kerak. Reklama Izlaber mahsulotni bevosita sotishini yoki
+      sotuvchi shartlarini kafolatlashini anglatmaydi.
     </p>
     <p>
       Reklamani moslashtirish uchun qidiruv so'rovlari, til, kartochka ko'rishlari
@@ -141,9 +147,10 @@ def sponsored_ads_policy(_request):
   <section lang="ru">
     <h2>Спонсируемая реклама</h2>
     <p>
-      Во время поиска Izlaber может показывать спонсируемые карточки, специальные
-      предложения или рекламные сообщения. Такая реклама используется только после
-      согласия пользователя.
+      В Izlaber могут показываться рекламные предложения от партнёров или продавцов.
+      Такие карточки должны быть отделены от обычной выдачи пометкой “Рекламное
+      предложение”. Реклама не означает, что Izlaber продаёт товар напрямую или
+      гарантирует условия продавца.
     </p>
     <p>
       Для подбора рекламы могут использоваться поисковые запросы, язык, показы
@@ -155,9 +162,10 @@ def sponsored_ads_policy(_request):
   <section lang="en">
     <h2>Sponsored Advertising</h2>
     <p>
-      During product search, Izlaber may show sponsored product cards, special
-      offers, or advertising messages. Sponsored advertising is used only after
-      user consent.
+      Izlaber may show advertising offers from partners or sellers. These cards
+      should be separated from regular results with the “Sponsored offer” label.
+      Advertising does not mean that Izlaber sells the product directly or guarantees
+      the seller's terms.
     </p>
     <p>
       To make ads relevant, we may use search queries, language, product card

@@ -17,7 +17,7 @@ class Config:
     server_api_base_url: str = "http://127.0.0.1:8000/api"
     public_base_url: str = ""
     bot_api_key: str = ""
-    product_search_limit: int = 5
+    product_search_limit: int = 10
     server_api_timeout: float = 10.0
     consent_enabled: bool = True
     consent_version: str = "2026-06-consent-v1"
@@ -99,7 +99,7 @@ def load_config() -> Config:
         server_api_base_url=getenv("SERVER_API_BASE_URL", "http://127.0.0.1:8000/api").rstrip("/"),
         public_base_url=public_base_url,
         bot_api_key=getenv("BOT_API_KEY", ""),
-        product_search_limit=int(getenv("BOT_PRODUCT_SEARCH_LIMIT", "5")),
+        product_search_limit=int(getenv("BOT_PRODUCT_SEARCH_LIMIT", "10")),
         server_api_timeout=float(getenv("BOT_SERVER_API_TIMEOUT", "10")),
         consent_enabled=getenv("BOT_CONSENT_ENABLED", "true").lower()
         in {"1", "true", "yes"},

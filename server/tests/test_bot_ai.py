@@ -376,7 +376,7 @@ def test_photo_candidate_query_limit_splits_budget():
     config = Config(bot=BotConfig(token="test"), openai_photo_candidate_limit=60)
 
     assert _photo_candidate_query_limit(config, 1) == 40
-    assert _photo_candidate_query_limit(config, 4) == 20
+    assert _photo_candidate_query_limit(config, 4) == 25
 
 
 def test_voice_search_availability_requires_key_and_runtime():

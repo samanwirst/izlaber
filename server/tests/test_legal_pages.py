@@ -10,10 +10,10 @@ def test_legal_pages_are_public_html(db):
     assert privacy.status_code == 200
     assert privacy["Content-Type"] == "text/html; charset=utf-8"
     assert privacy["X-Robots-Tag"] == "noindex"
-    assert "Izlaber Privacy Policy" in privacy.content.decode()
+    assert "Политика конфиденциальности Izlaber" in privacy.content.decode()
     assert "/consent" in privacy.content.decode()
 
     assert sponsored_ads.status_code == 200
     assert sponsored_ads["Content-Type"] == "text/html; charset=utf-8"
-    assert "Izlaber Sponsored Advertising" in sponsored_ads.content.decode()
+    assert "Рекламные предложения в Izlaber" in sponsored_ads.content.decode()
     assert "/consent" in sponsored_ads.content.decode()

@@ -7,10 +7,17 @@ from uuid import uuid4
 from aiogram import F, Router
 from aiogram.enums import ChatAction, ParseMode
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
-from aiogram.types import InlineQueryResultArticle, InputTextMessageContent, Message, PhotoSize
+from aiogram.types import (
+    CallbackQuery,
+    InlineQueryResultArticle,
+    InputTextMessageContent,
+    Message,
+    PhotoSize,
+)
 
 from bot.config import Config
 from bot.keyboards.main_menu import is_more_button_text, main_menu_keyboard, more_results_keyboard
+from bot.keyboards.product import MORE_RESULTS_CALLBACK, product_card_keyboard
 from bot.locales import format_message, language_from_message
 from bot.services.ai_audio import transcribe_voice_message
 from bot.services.ai_reranker import SearchExpansion, rank_products, rerank_products
@@ -20,7 +27,7 @@ from bot.services.ai_vision import (
     identify_product_photo,
     rerank_photo_products_by_image,
 )
-from bot.services.analytics import track_message_event
+from bot.services.analytics import track_callback_event, track_message_event
 from bot.services.api_client import (
     ProductDTO,
     ServerAPIClient,
@@ -253,6 +260,77 @@ async def search_more(message: Message, config: Config) -> None:
         language_code=language,
         query=session.query,
         config=config,
+    )
+
+
+@router.callback_query(F.data == MORE_RESULTS_CALLBACK)
+async def search_more_callback(callback: CallbackQuery, config: Config) -> None:
+    await callback.answer()
+    message = callback.message
+    if not isinstance(message, Message):
+        return
+
+    language = language_from_message(callback)
+    user_id = callback.from_user.id if callback.from_user else None
+    session = search_state.get(chat_id=message.chat.id, user_id=user_id)
+    if session is None:
+        await message.answer(
+            format_message("no_session", language),
+            reply_markup=main_menu_keyboard(language),
+        )
+        return
+
+    await track_callback_event(
+        config=config,
+        callback=callback,
+        event_type="more_results",
+        language_code=language,
+        input_type="inline_button",
+        metadata={
+            "query": session.query,
+            "offset": session.offset,
+            "candidate_offset": session.candidate_offset,
+        },
+    )
+    status_message = await message.answer(format_message("search_more_processing", language))
+    products = await _next_products(session=session, config=config, message=None)
+    if products is None:
+        await _replace_status_message(
+            status_message,
+            format_message("catalog_unavailable", language),
+            language=language,
+        )
+        return
+    if not products:
+        search_state.clear(chat_id=message.chat.id, user_id=user_id)
+        await _replace_status_message(
+            status_message,
+            format_message("no_more", language, query=session.query),
+            language=language,
+        )
+        return
+
+    search_state.set(
+        chat_id=message.chat.id,
+        user_id=user_id,
+        query=session.query,
+        products=session.products,
+        offset=session.offset + len(products),
+        candidate_offset=session.candidate_offset,
+    )
+    await _replace_status_message(
+        status_message,
+        format_message("found_intro", language, query=session.query, count=len(products)),
+        language=language,
+    )
+    await _send_products(
+        message,
+        products,
+        start_index=session.offset + 1,
+        language_code=language,
+        query=session.query,
+        config=config,
+        telegram_user_id=user_id,
     )
 
 
@@ -502,7 +580,7 @@ async def _next_products(
     *,
     session: SearchSession,
     config: Config,
-    message: Message,
+    message: Message | None,
 ) -> list[ProductDTO] | None:
     products = session.products[session.offset : session.offset + config.product_search_limit]
     if products:
@@ -1197,12 +1275,15 @@ async def _send_products(
     language_code: str | None,
     query: str,
     config: Config,
+    telegram_user_id: int | None = None,
 ) -> None:
+    last_index = start_index + len(products) - 1
     for index, product in enumerate(products, start=start_index):
         context_event_id = await track_message_event(
             config=config,
             message=message,
             event_type="view_item_list",
+            telegram_user_id=telegram_user_id,
             language_code=language_code,
             input_type="product_card",
             query=query,
@@ -1225,13 +1306,19 @@ async def _send_products(
         product_for_render = (
             replace(product, tracking_url=tracking_url) if tracking_url else product
         )
+        product_url = product_for_render.tracking_url or product_for_render.canonical_url
+        keyboard = product_card_keyboard(
+            language_code,
+            product_url=product_url,
+            include_more=index == last_index,
+        )
         caption = render_product_card(product_for_render, index, language_code)
         if product.cover_image_url:
             try:
                 await message.answer_photo(
                     photo=product.cover_image_url,
                     caption=caption,
-                    reply_markup=more_results_keyboard(language_code),
+                    reply_markup=keyboard,
                 )
                 continue
             except TelegramBadRequest:
@@ -1239,7 +1326,7 @@ async def _send_products(
         await message.answer(
             caption,
             disable_web_page_preview=False,
-            reply_markup=more_results_keyboard(language_code),
+            reply_markup=keyboard,
         )
 
 

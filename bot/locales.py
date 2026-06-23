@@ -31,52 +31,53 @@ LOCALES: dict[str, LocaleCopy] = {
         code="uz",
         bot_name="Izlaber",
         short_description=(
-            "Mahsulot qidiruvi: nom, foto yoki ovoz yuboring, bot 5 ta mos kartochkani "
-            "topadi."
+            "O'zbekiston marketplace'laridan tovar qidirish: matn, foto yoki ovoz. "
+            "Narx, reyting va havolalar bir joyda."
         ),
         description=(
-            "Kerakli mahsulotni tez toping. Mahsulot nomini, ovozli xabarni yoki "
-            "fotosini yuboring - bot katalogdan mos kartochkalarni narx, reyting, rasm "
-            "va havola bilan topadi. «Yana» tugmasi keyingi 5 ta natijani ko'rsatadi. "
-            "Matnli qidiruv tez ishlaydi, foto va murakkab so'rovlarda qo'shimcha "
-            "moslashtirish ishlatiladi."
+            "Izlaber turli ilovalarda uzoq qidirmasdan kerakli mahsulotni topishga "
+            "yordam beradi. Nomini yozing, foto yoki ovoz yuboring - bot O'zbekiston "
+            "marketplace'laridagi kartochkalarni narx, reyting va havolalar bilan "
+            "ko'rsatadi. Variantlarni solishtiring, mos mahsulotni oching va xaridni "
+            "sotuvchi platformasida yakunlang. Tez, qulay va Telegram ichida."
         ),
         command_descriptions={
-            "start": "Botni ishga tushirish va qidiruvni boshlash",
-            "help": "Qidiruv bo'yicha yordam va misollar",
-            "lang": "Tilni tanlash",
+            "start": "Tovar qidiruvini boshlash",
+            "help": "Izlaber'dan qanday foydalanish",
+            "lang": "Bot tilini o'zgartirish",
             "consent": "Ma'lumotlar va reklama roziligini boshqarish",
         },
         start_text=(
-            "Assalomu alaykum! Sizga kerakli mahsulotni topishga yordam beraman.\n\n"
-            "Mahsulot nomini yozing, ovozli xabar yuboring yoki fotosini yuboring - masalan: "
-            "<b>oq krossovka 300 minggacha</b> yoki <b>v yoqali sviter</b>.\n\n"
-            "Men 5 ta mos kartochka yuboraman. Tilni o'zgartirish uchun /lang yozing."
+            "Izlaber'ga xush kelibsiz. Men O'zbekiston marketplace'laridan tovarlarni "
+            "Telegram ichida tez topishga yordam beraman. Mahsulot nomini yozing, foto "
+            "yoki ovozli xabar yuboring - narx, reyting va havolalari bor mos "
+            "variantlarni ko'rsataman. Qulay variantni tanlang va xaridni sotuvchi "
+            "platformasida davom ettiring."
         ),
         help_text=(
-            "<b>Qanday ishlaydi</b>\n"
-            "1. Mahsulot nomi yoki belgilarini yozing.\n"
-            "2. Yoki ovozli xabar yuboring - bot uni matnga aylantiradi.\n"
-            "3. Yoki mahsulot fotosini yuboring - bot uni qidiruv so'roviga aylantiradi.\n"
-            "4. Bot 5 ta mos kartochka yuboradi.\n"
-            "5. <b>Yana</b> tugmasi keyingi 5 ta natijani ko'rsatadi.\n"
-            "6. Tilni almashtirish uchun /lang yozing.\n\n"
-            "<b>Misollar</b>\n"
-            "<code>iphone</code>\n"
-            "<code>oq krossovka 300 minggacha</code>\n"
-            "<code>v yoqali sviter</code>\n\n"
-            "Maslahat: rang, narx, material yoki modelni yozsangiz, natija aniqroq "
-            "bo'ladi."
+            "<b>Izlaber'dan qanday foydalanish:</b>\n\n"
+            "1. Qidirayotgan narsangizni yozing: masalan, “krossovka”, “changyutgich”, "
+            "“iPhone chexoli”.\n"
+            "2. Yoki mahsulot fotosini yuboring - o'xshash variantlarni topishga harakat "
+            "qilaman.\n"
+            "3. Yoki ovozli xabar yuboring - so'rovni tanib, qidiruvni boshlayman.\n"
+            "4. Mahsulot kartochkasini oching, narx, reyting va havolani solishtiring.\n"
+            "5. Xarid marketplace sayti yoki ilovasida amalga oshiriladi.\n\n"
+            "Izlaber mahsulotlarni bevosita sotmaydi. Bot variantlarni tezroq topish va "
+            "solishtirishga yordam beradi."
         ),
-        main_buttons=("iphone", "noutbuk"),
-        main_placeholder="Qidirish uchun mahsulot nomini yozing",
-        more_button="Yana",
-        more_placeholder="Yana tugmasini bosing yoki yangi mahsulot yozing",
+        main_buttons=("🔎 Mahsulot qidirish", "📷 Foto orqali qidirish"),
+        main_placeholder="Mahsulot yozing, foto yoki ovoz yuboring",
+        more_button="Yana ko'rsatish",
+        more_placeholder="Mahsulot yozing, foto yoki ovoz yuboring",
         messages={
             "empty_query": "Mahsulot nomini yozing.",
             "no_session": "Avval mahsulot nomini yozing, keyin «{more}» tugmasini bosing.",
             "no_more": "«{query}» bo'yicha boshqa kartochka topilmadi.",
-            "no_results": "Katalogda «{query}» bo'yicha mahsulot topilmadi.",
+            "no_results": (
+                "Aniq mos keladigan mahsulot topilmadi. So'rovni soddaroq yozing, boshqa "
+                "foto yuboring yoki brend, rang, o'lcham yoxud kategoriyani ko'rsating."
+            ),
             "found_intro": (
                 "«{query}» bo'yicha kartochkalar topildi. Birinchi {count} ta natija:"
             ),
@@ -101,14 +102,35 @@ LOCALES: dict[str, LocaleCopy] = {
             "guest_empty_description": "Katalogda mos mahsulot topilmadi.",
             "guest_results_header": "«{query}» bo'yicha {count} ta mahsulot topildi:",
             "guest_no_results": "Katalogda <b>{query}</b> bo'yicha mahsulot topilmadi.",
-            "language_prompt": (
-                "Tilni tanlang. Choose a language. Выберите язык."
-            ),
+            "language_prompt": "Botdan foydalanish uchun qulay tilni tanlang.",
             "language_changed": "Til yangilandi: <b>{language}</b>.",
             "search_processing": "Eng yaxshi variantlarni tanlayapman...",
             "search_more_processing": "Yana variantlarni qidiryapman...",
             "photo_processing": "Rasmga qarayapman va mos variantlarni qidiryapman...",
             "voice_processing": "Ovozli xabarni tinglayapman...",
+            "menu_button": "🔎 Mahsulot topish",
+            "search_cta_button": "🔎 Mahsulot qidirish",
+            "photo_search_prompt": (
+                "Mahsulot fotosini yuboring - marketplace kartochkalari ichidan o'xshash "
+                "variantlarni topishga harakat qilaman."
+            ),
+            "voice_search_prompt": (
+                "Mahsulot nomini ovozli xabar qilib yuboring - so'rovni tanib, qidiruvni "
+                "boshlayman."
+            ),
+            "description_picture_text": (
+                "Mahsulotni foto, ovoz yoki nom orqali toping - Izlaber variantlarni bir "
+                "joyda ko'rsatadi."
+            ),
+            "share_text": (
+                "Izlaber'ni sinab ko'ring - bot O'zbekiston marketplace'laridan "
+                "mahsulotlarni Telegram ichida topadi. Matn, foto yoki ovoz bilan "
+                "qidirish mumkin."
+            ),
+            "referral_invite_text": (
+                "Telegramda qulay mahsulot qidiruvini topdim: nom, foto yoki ovoz "
+                "yuborasiz - bot narx va havolalari bor variantlarni ko'rsatadi."
+            ),
             "photo_ai_unavailable": (
                 "Foto orqali qidiruv hozir ishlamayapti. Mahsulot nomini matn bilan yozing."
             ),
@@ -157,30 +179,28 @@ LOCALES: dict[str, LocaleCopy] = {
                 "Ovozli xabarni shunday tushundim: <b>{query}</b>. Birinchi {count} ta natija:"
             ),
             "consent_required": (
-                "<b>Rozilik kerak</b>\n\n"
-                "Izlaber ishlashi uchun shaxsiy ma'lumotlaringizni qayta ishlashga va "
-                "homiylik reklamasini ko'rsatishga rozilik kerak. Biz Telegram ID, profil "
-                "tili, xabarlar, qidiruv so'rovlari, yuborilgan foto/ovozli xabarlar va "
-                "kartochkalarga bosishlar haqidagi texnik ma'lumotlardan qidiruv, servisni "
-                "yaxshilash, analitika va reklama uchun foydalanamiz.\n\n"
-                "Rozilikni istalgan vaqtda /consent orqali bekor qilishingiz mumkin. "
-                "Rozilik bo'lmasa, bot so'rovlarni qayta ishlamaydi."
+                "Tovar qidirish uchun Izlaber xabarlaringiz, qidiruv so'rovlaringiz, foto "
+                "yoki ovozli xabarlaringizni qayta ishlaydi, mahsulot kartochkalarini "
+                "ko'rsatadi va havolalarga bosishlarni hisobga olishi mumkin. Botda "
+                "reklama takliflari ham bo'lishi mumkin. “Roziman” tugmasini bosib, ushbu "
+                "ma'lumotlarni qayta ishlash va reklama ko'rsatishga rozilik berasiz. "
+                "Rozilikni /consent buyrug'i orqali bekor qilish mumkin."
             ),
-            "consent_accept_button": "Roziman",
-            "consent_decline_button": "Rad etaman",
+            "consent_accept_button": "✅ Roziman, qidirishni boshlash",
+            "consent_decline_button": "Hozir emas",
             "consent_revoke_button": "Rozilikni bekor qilish",
-            "consent_privacy_button": "Maxfiylik",
-            "consent_ads_button": "Reklama",
+            "consent_privacy_button": "Ma'lumotlar haqida",
+            "consent_ads_button": "Reklama haqida",
             "consent_first_alert": "Avval rozilikni tasdiqlang.",
             "consent_accepted": "Rozilik saqlandi.",
             "consent_ready": "Endi mahsulot nomi, fotosi yoki ovozli xabar yuboring.",
             "consent_declined": (
-                "Rozilik berilmadi. Bot so'rovlarni qayta ishlamaydi. Davom etish uchun "
-                "rozilikni tasdiqlang."
+                "Rozilik berilmadi. Izlaber roziliksiz ishlamaydi. Qidirishni boshlash "
+                "uchun rozilikni tasdiqlang."
             ),
             "consent_revoked": (
-                "Rozilik bekor qilindi. Bot so'rovlarni qayta ishlamaydi. Davom etish "
-                "uchun rozilikni qayta tasdiqlang."
+                "Rozilik bekor qilindi. Ma'lumotlarni qayta ishlashga yana ruxsat "
+                "bermaguningizcha mahsulot qidiruvi ishlamaydi."
             ),
             "consent_status_active": (
                 "Rozilik faol. Uni bekor qilsangiz, bot mahsulot qidiruvlarini qayta "
@@ -199,59 +219,64 @@ LOCALES: dict[str, LocaleCopy] = {
             "reviews_many": "sharh",
             "category": "Kategoriya",
             "currency_uzs": "so'm",
+            "open_product": "Mahsulotni ochish",
+            "sponsored": "Reklama taklifi",
+            "footer": (
+                "Narx, reyting va mavjudlik marketplace tomonida o'zgarishi mumkin. "
+                "Xarid qilishdan oldin ma'lumotlarni tekshiring."
+            ),
         },
     ),
     "ru": LocaleCopy(
         code="ru",
         bot_name="Izlaber",
         short_description=(
-            "Поиск товаров: напишите товар или отправьте фото, бот найдет 5 карточек."
+            "Поиск товаров по маркетплейсам Узбекистана: текстом, фото или голосом. "
+            "Цены, рейтинги и ссылки в одном месте."
         ),
         description=(
-            "Быстро находите товары. Напишите название или признаки "
-            "товара, отправьте голосовое сообщение либо фото - бот покажет карточки с "
-            "ценой, рейтингом, "
-            "обложкой и ссылкой. Кнопка «Еще» отправляет следующие 5 результатов. "
-            "Текстовый поиск быстрый, для фото и сложных запросов подключается "
-            "дополнительная обработка."
+            "Izlaber помогает найти нужный товар без долгих поисков по разным "
+            "приложениям. Напишите название, отправьте фото или голос - бот покажет "
+            "карточки товаров из маркетплейсов Узбекистана с ценами, рейтингами и "
+            "ссылками. Сравнивайте варианты, открывайте подходящий товар и покупайте "
+            "уже на площадке продавца. Быстро, удобно и прямо в Telegram."
         ),
         command_descriptions={
-            "start": "Запустить бота и начать поиск",
-            "help": "Помощь по поиску и примеры запросов",
-            "lang": "Выбрать язык",
+            "start": "Запустить поиск товаров",
+            "help": "Как пользоваться Izlaber",
+            "lang": "Изменить язык бота",
             "consent": "Управлять согласием на данные и рекламу",
         },
         start_text=(
-            "Здравствуйте! Я помогу найти нужный товар.\n\n"
-            "Напишите название или признаки товара, отправьте голосовое сообщение "
-            "либо фото - например: "
-            "<b>белые кроссовки до 300 тысяч</b> или <b>свитер v вырез</b>.\n\n"
-            "Я отправлю 5 подходящих карточек. Чтобы сменить язык, напишите /lang."
+            "Добро пожаловать в Izlaber. Я помогаю быстро искать товары по "
+            "маркетплейсам Узбекистана прямо в Telegram. Напишите название товара, "
+            "отправьте фото или голосовое сообщение - я покажу подходящие варианты с "
+            "ценами, рейтингами и ссылками. Выбирайте удобный вариант и переходите к "
+            "покупке на площадке продавца."
         ),
         help_text=(
-            "<b>Как это работает</b>\n"
-            "1. Напишите название товара или важные признаки.\n"
-            "2. Или отправьте голосовое сообщение - бот переведет его в текст.\n"
-            "3. Или отправьте фото товара - бот превратит его в поисковый запрос.\n"
-            "4. Бот отправит 5 подходящих карточек.\n"
-            "5. Кнопка <b>Еще</b> покажет следующие 5 результатов по этому же запросу.\n"
-            "6. Для смены языка напишите /lang.\n\n"
-            "<b>Примеры</b>\n"
-            "<code>iphone</code>\n"
-            "<code>белые кроссовки до 300 тысяч</code>\n"
-            "<code>свитер v вырез</code>\n\n"
-            "Совет: добавляйте цвет, цену, материал или модель - так результаты будут "
-            "точнее."
+            "<b>Как пользоваться Izlaber:</b>\n\n"
+            "1. Напишите, что ищете: например, “кроссовки”, “пылесос”, “чехол iPhone”.\n"
+            "2. Или отправьте фото товара - я попробую найти похожие варианты.\n"
+            "3. Или отправьте голосовое сообщение - я распознаю запрос и запущу поиск.\n"
+            "4. Откройте карточку товара, сравните цену, рейтинг и ссылку.\n"
+            "5. Покупка проходит на сайте или в приложении маркетплейса.\n\n"
+            "Izlaber не продаёт товары напрямую. Бот помогает быстрее найти и сравнить "
+            "варианты."
         ),
-        main_buttons=("iphone", "ноутбук"),
-        main_placeholder="Введите товар для поиска",
-        more_button="Еще",
-        more_placeholder="Нажмите Еще или введите новый товар",
+        main_buttons=("🔎 Искать товар", "📷 Поиск по фото"),
+        main_placeholder="Напишите товар, отправьте фото или голос",
+        more_button="Показать ещё",
+        more_placeholder="Напишите товар, отправьте фото или голос",
         messages={
             "empty_query": "Напишите название товара.",
             "no_session": "Сначала напишите название товара, потом нажимайте «{more}».",
-            "no_more": "Больше карточек по запросу «{query}» не нашел.",
-            "no_results": "В каталоге пока нет товаров по запросу «{query}».",
+            "no_more": "Больше карточек по запросу «{query}» не нашёл.",
+            "no_results": (
+                "Я не нашёл точных совпадений. Попробуйте написать запрос проще, "
+                "отправить другое фото или указать бренд, цвет, размер либо категорию "
+                "товара."
+            ),
             "found_intro": "Нашел карточки по запросу «{query}». Показываю первые {count}:",
             "catalog_unavailable": "Каталог сейчас недоступен. Попробуйте позже.",
             "rate_limited": (
@@ -274,12 +299,34 @@ LOCALES: dict[str, LocaleCopy] = {
             "guest_empty_description": "В каталоге нет подходящих товаров.",
             "guest_results_header": "Нашел {count} {noun} по запросу <b>{query}</b>:",
             "guest_no_results": "В каталоге пока нет товаров по запросу <b>{query}</b>.",
-            "language_prompt": "Выберите язык. Tilni tanlang. Choose a language.",
+            "language_prompt": "Выберите язык, на котором вам удобнее пользоваться ботом.",
             "language_changed": "Язык обновлен: <b>{language}</b>.",
             "search_processing": "Выбираю лучшие варианты...",
             "search_more_processing": "Ищу еще варианты...",
             "photo_processing": "Смотрю фото и ищу похожие товары...",
             "voice_processing": "Распознаю голосовое сообщение...",
+            "menu_button": "🔎 Найти товар",
+            "search_cta_button": "🔎 Искать товар",
+            "photo_search_prompt": (
+                "Отправьте фото товара - я попробую найти похожие варианты по карточкам "
+                "маркетплейсов."
+            ),
+            "voice_search_prompt": (
+                "Отправьте голосовое сообщение с названием товара - я распознаю запрос и "
+                "запущу поиск."
+            ),
+            "description_picture_text": (
+                "Найдите товар по фото, голосу или названию - Izlaber покажет варианты в "
+                "одном месте."
+            ),
+            "share_text": (
+                "Попробуй Izlaber - бот ищет товары по маркетплейсам Узбекистана прямо "
+                "в Telegram. Можно искать текстом, фото или голосом."
+            ),
+            "referral_invite_text": (
+                "Нашёл удобный поиск товаров в Telegram: отправляешь название, фото или "
+                "голос - бот показывает варианты с ценами и ссылками."
+            ),
             "photo_ai_unavailable": (
                 "Поиск по фото сейчас недоступен. Напишите название товара текстом."
             ),
@@ -331,30 +378,27 @@ LOCALES: dict[str, LocaleCopy] = {
                 "Голосовое распознал как: <b>{query}</b>. Показываю первые {count}:"
             ),
             "consent_required": (
-                "<b>Нужно согласие</b>\n\n"
-                "Чтобы Izlaber работал, нужно согласие на обработку персональных данных "
-                "и на показ спонсируемой рекламы. Мы используем Telegram ID, язык профиля, "
-                "сообщения, поисковые запросы, отправленные фото/голосовые сообщения и "
-                "технические данные о нажатиях на карточки для поиска, работы сервиса, "
-                "аналитики и рекламы.\n\n"
-                "Согласие можно отозвать в любой момент через /consent. Без согласия бот "
-                "не обрабатывает запросы."
+                "Чтобы искать товары, Izlaber обрабатывает ваши сообщения, поисковые "
+                "запросы, фото или голосовые сообщения, а также показывает карточки "
+                "товаров и может учитывать клики по ссылкам. В боте также могут быть "
+                "рекламные предложения. Нажимая “Согласен”, вы разрешаете обработку "
+                "этих данных и показ рекламы. Согласие можно отозвать командой /consent."
             ),
-            "consent_accept_button": "Согласен",
-            "consent_decline_button": "Не согласен",
+            "consent_accept_button": "✅ Согласен, начать поиск",
+            "consent_decline_button": "Не сейчас",
             "consent_revoke_button": "Отозвать согласие",
-            "consent_privacy_button": "Конфиденциальность",
-            "consent_ads_button": "Реклама",
+            "consent_privacy_button": "Подробнее о данных",
+            "consent_ads_button": "Подробнее о рекламе",
             "consent_first_alert": "Сначала подтвердите согласие.",
             "consent_accepted": "Согласие сохранено.",
             "consent_ready": "Теперь отправьте название товара, фото или голосовое сообщение.",
             "consent_declined": (
-                "Согласие не дано. Бот не будет обрабатывать запросы. Чтобы продолжить, "
+                "Согласие не дано. Без него Izlaber не работает. Чтобы продолжить поиск, "
                 "подтвердите согласие."
             ),
             "consent_revoked": (
-                "Согласие отозвано. Бот не будет обрабатывать запросы. Чтобы продолжить, "
-                "подтвердите согласие заново."
+                "Согласие отозвано. Поиск товаров будет недоступен, пока вы снова не "
+                "разрешите обработку данных."
             ),
             "consent_status_active": (
                 "Согласие активно. Если отозвать его, бот перестанет обрабатывать "
@@ -373,57 +417,65 @@ LOCALES: dict[str, LocaleCopy] = {
             "reviews_many": "отзывов",
             "category": "Категория",
             "currency_uzs": "сум",
+            "open_product": "Открыть товар",
+            "sponsored": "Рекламное предложение",
+            "footer": (
+                "Цена, рейтинг и наличие могут измениться на стороне маркетплейса. "
+                "Проверьте данные перед покупкой."
+            ),
         },
     ),
     "en": LocaleCopy(
         code="en",
         bot_name="Izlaber",
         short_description=(
-            "Search products by name, voice, or photo and get 5 relevant product cards."
+            "Search Uzbekistan marketplace products by text, photo, or voice. Prices, "
+            "ratings, and links in one place."
         ),
         description=(
-            "Find products faster. Send a product name, a voice message, "
-            "details, or a photo, "
-            "and the bot returns cards with price, rating, cover image, and link. Tap “More” "
-            "to see the next 5 results. Text search is fast; photos and harder queries use "
-            "additional matching."
+            "Izlaber helps you find the right product without searching through multiple "
+            "apps. Type a name, send a photo, or use voice - the bot shows product cards "
+            "from Uzbekistan marketplaces with prices, ratings, and links. Compare "
+            "options, open the right product, and complete the purchase on the seller's "
+            "platform. Fast, convenient, and right in Telegram."
         ),
         command_descriptions={
-            "start": "Start the bot and search products",
-            "help": "Search help and example queries",
-            "lang": "Choose language",
-            "consent": "Manage data and sponsored ads consent",
+            "start": "Start product search",
+            "help": "How to use Izlaber",
+            "lang": "Change bot language",
+            "consent": "Manage data and ads consent",
         },
         start_text=(
-            "Hi! I can help you find the right product.\n\n"
-            "Send a product name, a voice message, details, or a photo - for example: "
-            "<b>white sneakers "
-            "under 300k</b> or <b>v neck sweater</b>.\n\n"
-            "I will send 5 relevant product cards. To switch language, send /lang."
+            "Welcome to Izlaber. I help you quickly search Uzbekistan marketplace "
+            "products right in Telegram. Type a product name, send a photo, or send a "
+            "voice message - I will show matching options with prices, ratings, and "
+            "links. Choose the best option and continue the purchase on the seller's "
+            "platform."
         ),
         help_text=(
-            "<b>How it works</b>\n"
-            "1. Send a product name or important details.\n"
-            "2. Or send a voice message - the bot turns it into text.\n"
-            "3. Or send a product photo - the bot turns it into a search query.\n"
-            "4. The bot returns 5 relevant product cards.\n"
-            "5. The <b>More</b> button shows the next 5 results for the same query.\n"
-            "6. To change language, send /lang.\n\n"
-            "<b>Examples</b>\n"
-            "<code>iphone</code>\n"
-            "<code>white sneakers under 300k</code>\n"
-            "<code>v neck sweater</code>\n\n"
-            "Tip: add color, price, material, or model to get more precise results."
+            "<b>How to use Izlaber:</b>\n\n"
+            "1. Type what you are looking for: for example, “sneakers”, “vacuum cleaner”, "
+            "or “iPhone case”.\n"
+            "2. Or send a product photo - I will try to find similar options.\n"
+            "3. Or send a voice message - I will recognize the request and start the "
+            "search.\n"
+            "4. Open a product card and compare the price, rating, and link.\n"
+            "5. Purchase happens on the marketplace website or app.\n\n"
+            "Izlaber does not sell products directly. The bot helps you find and compare "
+            "options faster."
         ),
-        main_buttons=("iphone", "laptop"),
-        main_placeholder="Type a product to search",
-        more_button="More",
-        more_placeholder="Tap More or type a new product",
+        main_buttons=("🔎 Search product", "📷 Search by photo"),
+        main_placeholder="Type a product, send a photo or voice",
+        more_button="Show more",
+        more_placeholder="Type a product, send a photo or voice",
         messages={
             "empty_query": "Type a product name.",
             "no_session": "Send a product name first, then tap “{more}”.",
             "no_more": "No more product cards found for “{query}”.",
-            "no_results": "No products found in the catalog for “{query}”.",
+            "no_results": (
+                "I did not find exact matches. Try a simpler query, send another photo, "
+                "or specify the brand, color, size, or product category."
+            ),
             "found_intro": "Found product cards for “{query}”. Showing the first {count}:",
             "catalog_unavailable": "The catalog is unavailable right now. Try again later.",
             "rate_limited": "Too many requests. Try again in {retry_after}.",
@@ -444,12 +496,34 @@ LOCALES: dict[str, LocaleCopy] = {
             "guest_empty_description": "No matching products in the catalog.",
             "guest_results_header": "Found {count} {noun} for <b>{query}</b>:",
             "guest_no_results": "No products found in the catalog for <b>{query}</b>.",
-            "language_prompt": "Choose a language. Tilni tanlang. Выберите язык.",
+            "language_prompt": "Choose the language you prefer for using the bot.",
             "language_changed": "Language updated: <b>{language}</b>.",
             "search_processing": "Picking the best matches...",
             "search_more_processing": "Looking for more matches...",
             "photo_processing": "Checking the photo and finding similar products...",
             "voice_processing": "Transcribing the voice message...",
+            "menu_button": "🔎 Find product",
+            "search_cta_button": "🔎 Search product",
+            "photo_search_prompt": (
+                "Send a product photo - I will try to find similar options in marketplace "
+                "cards."
+            ),
+            "voice_search_prompt": (
+                "Send a voice message with the product name - I will recognize the request "
+                "and start searching."
+            ),
+            "description_picture_text": (
+                "Find a product by photo, voice, or name - Izlaber shows options in one "
+                "place."
+            ),
+            "share_text": (
+                "Try Izlaber - the bot searches Uzbekistan marketplaces right in Telegram. "
+                "You can search by text, photo, or voice."
+            ),
+            "referral_invite_text": (
+                "I found a convenient product search in Telegram: send a name, photo, or "
+                "voice - the bot shows options with prices and links."
+            ),
             "photo_ai_unavailable": (
                 "Photo search is unavailable right now. Type the product name instead."
             ),
@@ -499,29 +573,26 @@ LOCALES: dict[str, LocaleCopy] = {
                 "I transcribed the voice message as: <b>{query}</b>. Showing the first {count}:"
             ),
             "consent_required": (
-                "<b>Consent required</b>\n\n"
-                "To use Izlaber, you need to consent to personal data processing and "
-                "sponsored advertising. We use your Telegram ID, profile language, messages, "
-                "search queries, submitted photos/voice messages, and technical card-click "
-                "data for search, service operation, analytics, and advertising.\n\n"
-                "You can revoke consent anytime with /consent. Without consent, the bot "
-                "does not process requests."
+                "To search for products, Izlaber processes your messages, search queries, "
+                "photos or voice messages, shows product cards, and may count link clicks. "
+                "The bot may also show advertising offers. By tapping “I agree”, you allow "
+                "this data processing and ad display. You can revoke consent with /consent."
             ),
-            "consent_accept_button": "I agree",
-            "consent_decline_button": "I do not agree",
+            "consent_accept_button": "✅ I agree, start search",
+            "consent_decline_button": "Not now",
             "consent_revoke_button": "Revoke consent",
-            "consent_privacy_button": "Privacy",
-            "consent_ads_button": "Ads",
+            "consent_privacy_button": "Data details",
+            "consent_ads_button": "Ads details",
             "consent_first_alert": "Confirm consent first.",
             "consent_accepted": "Consent saved.",
             "consent_ready": "Now send a product name, photo, or voice message.",
             "consent_declined": (
-                "Consent was not given. The bot will not process requests. Confirm consent "
-                "to continue."
+                "Consent was not given. Izlaber does not work without it. Confirm consent "
+                "to continue searching."
             ),
             "consent_revoked": (
-                "Consent revoked. The bot will not process requests. Confirm consent again "
-                "to continue."
+                "Consent revoked. Product search is unavailable until you allow data "
+                "processing again."
             ),
             "consent_status_active": (
                 "Consent is active. If you revoke it, the bot will stop processing search "
@@ -540,6 +611,12 @@ LOCALES: dict[str, LocaleCopy] = {
             "reviews_many": "reviews",
             "category": "Category",
             "currency_uzs": "UZS",
+            "open_product": "Open product",
+            "sponsored": "Sponsored offer",
+            "footer": (
+                "Price, rating, and availability may change on the marketplace side. "
+                "Check details before buying."
+            ),
         },
     ),
 }

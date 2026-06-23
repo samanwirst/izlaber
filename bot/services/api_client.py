@@ -264,6 +264,7 @@ def render_product_card(product: ProductDTO, index: int, language_code: str | No
     if product.category_path_text:
         category = escape(product.category_path_text)
         lines.append(f"{product_label('category', language_code)}: {category}")
+    lines.extend(["", f"<i>{escape(product_label('footer', language_code))}</i>"])
     return "\n".join(lines)
 
 
