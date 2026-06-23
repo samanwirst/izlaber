@@ -4,6 +4,7 @@ from uuid import UUID
 
 import pytest
 from aiogram.types import Chat, Message, PhotoSize, Voice
+from django.conf import settings
 
 from bot.config import BotConfig, Config, _policy_url
 from bot.handlers.admin import _format_usd, _is_openai_status_admin
@@ -412,6 +413,12 @@ def test_config_exposes_rate_limit_defaults():
     assert config.search_rate_limit_max_events == 12
     assert config.ai_rate_limit_max_events == 12
     assert config.ai_rate_limit_window_seconds == 3600.0
+
+
+def test_consent_versions_match_between_bot_and_server_defaults():
+    config = Config(bot=BotConfig(token="test"))
+
+    assert config.consent_version == settings.USER_CONSENT_VERSION
 
 
 def test_voice_transcription_prompt_uses_language_names_not_codes():
