@@ -550,7 +550,25 @@ def test_photo_search_queries_prioritize_latin_brand_and_object_type():
     assert _photo_search_queries(parsed)[0] == "Snickers батончик"
 
 
-def test_photo_text_fallback_keeps_only_matching_snack_type():
+def test_photo_search_queries_add_multilingual_packaged_goods_aliases():
+    photo_query = PhotoSearchQuery(
+        query="Coca Cola напиток",
+        alternative_queries=[],
+        confidence="high",
+        visible_product="cola bottle",
+        object_type="напиток",
+        brand="Coca Cola",
+        visible_text="Coca Cola",
+        key_features=["бутылка"],
+    )
+
+    queries = _photo_search_queries(photo_query)
+
+    assert "Coca Cola ichimlik" in queries
+    assert "Coca Cola drink" in queries
+
+
+def test_photo_text_fallback_requires_brand_when_brand_is_visible():
     photo_query = PhotoSearchQuery(
         query="Snickers сникерс батончик",
         alternative_queries=[],
@@ -562,12 +580,34 @@ def test_photo_text_fallback_keeps_only_matching_snack_type():
         key_features=["шоколад"],
     )
     chocolate_bar = product(1, "Батончик шоколадный Toren Choco Dino")
+    a4_bar = product(4, "А4 Шоколадный батончик, 40 г")
     shoes = product(2, "Кроссовки мужские сникерсы")
     book = product(3, "Не тормози! Контроль над временем")
 
     assert _photo_text_fallback_products(
         photo_query=photo_query,
-        products=[shoes, book, chocolate_bar],
+        products=[shoes, book, chocolate_bar, a4_bar],
+        limit=10,
+    ) == []
+
+
+def test_photo_text_fallback_allows_unbranded_packaged_goods():
+    photo_query = PhotoSearchQuery(
+        query="шоколадный батончик",
+        alternative_queries=[],
+        confidence="medium",
+        visible_product="chocolate bar",
+        object_type="батончик",
+        brand="",
+        visible_text="",
+        key_features=["шоколад"],
+    )
+    chocolate_bar = product(1, "Батончик шоколадный Toren Choco Dino")
+    shoes = product(2, "Кроссовки мужские сникерсы")
+
+    assert _photo_text_fallback_products(
+        photo_query=photo_query,
+        products=[shoes, chocolate_bar],
         limit=10,
     ) == [chocolate_bar]
 

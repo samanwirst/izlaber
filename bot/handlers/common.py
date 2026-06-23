@@ -150,6 +150,32 @@ PHOTO_TEXT_FALLBACK_OBJECT_TOKENS = {
     "шоколадка",
     "шоколадный",
 }
+PHOTO_OBJECT_QUERY_ALIASES = {
+    "батончик": ("батончик", "шоколадный батончик", "chocolate bar", "snack bar"),
+    "батончики": ("батончик", "шоколадный батончик", "chocolate bar", "snack bar"),
+    "вода": ("вода", "suv", "water"),
+    "газировка": ("газированный напиток", "gazlangan ichimlik", "soft drink"),
+    "жвачка": ("жвачка", "saqich", "chewing gum"),
+    "йогурт": ("йогурт", "yogurt"),
+    "конфета": ("конфета", "konfet", "candy"),
+    "конфеты": ("конфета", "konfet", "candy"),
+    "кофе": ("кофе", "qahva", "coffee"),
+    "напиток": ("напиток", "ichimlik", "drink"),
+    "напитки": ("напиток", "ichimlik", "drink"),
+    "печенье": ("печенье", "pechenye", "cookies"),
+    "сок": ("сок", "sharbat", "juice"),
+    "соус": ("соус", "sous", "sauce"),
+    "снек": ("снек", "snek", "snack"),
+    "снэк": ("снек", "snek", "snack"),
+    "снэки": ("снек", "snek", "snack"),
+    "снеки": ("снек", "snek", "snack"),
+    "чай": ("чай", "choy", "tea"),
+    "чипс": ("чипсы", "chips", "chipsi"),
+    "чипсы": ("чипсы", "chips", "chipsi"),
+    "шоколад": ("шоколад", "shokolad", "chocolate"),
+    "шоколадка": ("шоколад", "shokolad", "chocolate"),
+    "шоколадный": ("шоколад", "shokolad", "chocolate"),
+}
 PRICE_STOP_TOKENS = {
     "до",
     "дешевле",
@@ -1244,6 +1270,7 @@ async def _load_photo_ranked_candidates(
 def _photo_search_queries(photo_query: PhotoSearchQuery) -> list[str]:
     raw_queries = [
         _photo_core_query(photo_query),
+        *_photo_object_alias_queries(photo_query),
         photo_query.query,
         *photo_query.alternative_queries,
         " ".join(
@@ -1265,7 +1292,7 @@ def _photo_search_queries(photo_query: PhotoSearchQuery) -> list[str]:
             continue
         queries.append(cleaned)
         seen.add(key)
-        if len(queries) >= 5:
+        if len(queries) >= 7:
             break
     return queries or [photo_query.query]
 
@@ -1281,6 +1308,23 @@ def _photo_core_query(photo_query: PhotoSearchQuery) -> str:
     return photo_query.query
 
 
+def _photo_object_alias_queries(photo_query: PhotoSearchQuery) -> list[str]:
+    aliases: list[str] = []
+    seen: set[str] = set()
+    prefix = photo_query.brand.strip() if photo_query.brand else ""
+    for token in _query_tokens(photo_query.object_type):
+        for alias in PHOTO_OBJECT_QUERY_ALIASES.get(token, ()):
+            query = f"{prefix} {alias}".strip()
+            key = query.casefold()
+            if not query or key in seen:
+                continue
+            aliases.append(query)
+            seen.add(key)
+            if len(aliases) >= 4:
+                return aliases
+    return aliases
+
+
 def _photo_text_fallback_products(
     *,
     photo_query: PhotoSearchQuery,
@@ -1292,19 +1336,26 @@ def _photo_text_fallback_products(
     if not allowed_tokens:
         return []
 
+    brand_tokens = _photo_brand_tokens(photo_query.brand)
     filtered: list[ProductDTO] = []
     for product in products:
         haystack = " ".join(
             part
-            for part in (product.title, product.category_path_text)
+            for part in (product.title, product.brand, product.category_path_text)
             if part
         )
         product_tokens = set(_query_tokens(haystack))
+        if brand_tokens and not brand_tokens & product_tokens:
+            continue
         if allowed_tokens & product_tokens:
             filtered.append(product)
         if len(filtered) >= limit:
             break
     return filtered
+
+
+def _photo_brand_tokens(brand: str) -> set[str]:
+    return {token for token in _query_tokens(brand) if len(token) >= 3}
 
 
 def _photo_candidate_query_limit(config: Config, query_count: int) -> int:
