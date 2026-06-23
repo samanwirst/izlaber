@@ -375,7 +375,7 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
             (
                 used_query,
                 ranked_products,
-                used_text_fallback,
+                photo_match_mode,
             ) = await _load_photo_ranked_candidates(
                 image_bytes=image_bytes,
                 photo_query=photo_query,
@@ -406,7 +406,7 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
             await _replace_status_message(
                 status_message,
                 format_message(
-                    "photo_text_fallback_intro" if used_text_fallback else "photo_found_intro",
+                    _photo_result_intro_key(photo_match_mode),
                     language,
                     query=used_query,
                     count=len(products),
@@ -1198,7 +1198,7 @@ async def _load_photo_ranked_candidates(
     photo_query: PhotoSearchQuery,
     config: Config,
     message: Message,
-) -> tuple[str, list[ProductDTO] | None, bool]:
+) -> tuple[str, list[ProductDTO] | None, str]:
     language = language_from_message(message)
     queries = _photo_search_queries(photo_query)
     query_limit = _photo_candidate_query_limit(config, len(queries))
@@ -1225,6 +1225,14 @@ async def _load_photo_ranked_candidates(
                 )
                 if len(products) >= config.openai_photo_candidate_limit:
                     break
+            if not products:
+                substitute_query, substitute_products = await _load_photo_substitute_products(
+                    client=client,
+                    photo_query=photo_query,
+                    config=config,
+                )
+                if substitute_products:
+                    return substitute_query, substitute_products, "substitute"
     except ServerAPIError as error:
         logger.warning("Photo product candidate search failed for %r: %s", queries, error)
         await message.answer(
@@ -1232,11 +1240,11 @@ async def _load_photo_ranked_candidates(
             disable_web_page_preview=True,
             reply_markup=main_menu_keyboard(language),
         )
-        return used_query, None, False
+        return used_query, None, "none"
 
     products = products[: max(config.product_search_limit, config.openai_photo_candidate_limit)]
     if not products:
-        return used_query, [], False
+        return used_query, [], "none"
 
     ranked_products = await rerank_photo_products_by_image(
         image_bytes=image_bytes,
@@ -1247,24 +1255,84 @@ async def _load_photo_ranked_candidates(
     )
     if ranked_products is None:
         if config.openai_photo_text_fallback_enabled:
-            return used_query, products, True
+            return used_query, products, "text"
         await message.answer(
             format_message("photo_ai_unavailable", language),
             reply_markup=main_menu_keyboard(language),
         )
-        return used_query, None, False
+        return used_query, None, "none"
     if ranked_products:
-        return used_query, ranked_products, False
+        return used_query, ranked_products, "ai"
     safe_text_fallback = _photo_text_fallback_products(
         photo_query=photo_query,
         products=products,
         limit=max(config.product_search_limit, config.openai_photo_candidate_limit),
     )
     if safe_text_fallback:
-        return used_query, safe_text_fallback, True
-    if config.openai_photo_text_fallback_enabled:
-        return used_query, products, True
-    return used_query, [], False
+        return used_query, safe_text_fallback, "text"
+    try:
+        async with ServerAPIClient(
+            config.server_api_base_url,
+            config.bot_api_key,
+            timeout=config.server_api_timeout,
+        ) as client:
+            substitute_query, substitute_products = await _load_photo_substitute_products(
+                client=client,
+                photo_query=photo_query,
+                config=config,
+            )
+    except ServerAPIError as error:
+        logger.warning("Photo substitute search failed for %r: %s", photo_query.query, error)
+        substitute_query, substitute_products = used_query, []
+    if substitute_products:
+        return substitute_query, substitute_products, "substitute"
+    return used_query, [], "none"
+
+
+def _photo_result_intro_key(mode: str) -> str:
+    if mode == "substitute":
+        return "photo_substitute_intro"
+    if mode == "text":
+        return "photo_text_fallback_intro"
+    return "photo_found_intro"
+
+
+async def _load_photo_substitute_products(
+    *,
+    client: ServerAPIClient,
+    photo_query: PhotoSearchQuery,
+    config: Config,
+) -> tuple[str, list[ProductDTO]]:
+    if not config.openai_photo_text_fallback_enabled:
+        return photo_query.query, []
+    if not _photo_brand_tokens(photo_query.brand):
+        return photo_query.query, []
+
+    queries = _photo_substitute_queries(photo_query)
+    if not queries:
+        return photo_query.query, []
+
+    query_limit = _photo_candidate_query_limit(config, len(queries))
+    products: list[ProductDTO] = []
+    used_query = queries[0]
+    for query in queries:
+        query_products = await client.search_products(
+            query=query,
+            limit=query_limit,
+            offset=0,
+        )
+        filtered = _photo_text_fallback_products(
+            photo_query=photo_query,
+            products=query_products,
+            limit=config.openai_photo_candidate_limit,
+            require_brand=False,
+        )
+        if filtered and not products:
+            used_query = query
+        products = _merge_unique_products(products, filtered)
+        if len(products) >= config.product_search_limit:
+            break
+    return used_query, products[: config.product_search_limit]
 
 
 def _photo_search_queries(photo_query: PhotoSearchQuery) -> list[str]:
@@ -1295,6 +1363,25 @@ def _photo_search_queries(photo_query: PhotoSearchQuery) -> list[str]:
         if len(queries) >= 7:
             break
     return queries or [photo_query.query]
+
+
+def _photo_substitute_queries(photo_query: PhotoSearchQuery) -> list[str]:
+    raw_queries = [
+        photo_query.object_type,
+        *_photo_object_alias_queries(replace(photo_query, brand="")),
+    ]
+    queries = []
+    seen = set()
+    for query in raw_queries:
+        cleaned = " ".join(query.split())
+        key = cleaned.casefold()
+        if not cleaned or key in seen:
+            continue
+        queries.append(cleaned)
+        seen.add(key)
+        if len(queries) >= 5:
+            break
+    return queries
 
 
 def _photo_core_query(photo_query: PhotoSearchQuery) -> str:
@@ -1330,6 +1417,7 @@ def _photo_text_fallback_products(
     photo_query: PhotoSearchQuery,
     products: list[ProductDTO],
     limit: int,
+    require_brand: bool = True,
 ) -> list[ProductDTO]:
     object_tokens = set(_query_tokens(photo_query.object_type))
     allowed_tokens = object_tokens & PHOTO_TEXT_FALLBACK_OBJECT_TOKENS
@@ -1345,7 +1433,7 @@ def _photo_text_fallback_products(
             if part
         )
         product_tokens = set(_query_tokens(haystack))
-        if brand_tokens and not brand_tokens & product_tokens:
+        if require_brand and brand_tokens and not brand_tokens & product_tokens:
             continue
         if allowed_tokens & product_tokens:
             filtered.append(product)

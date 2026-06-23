@@ -14,7 +14,9 @@ from bot.handlers.common import (
     _local_results_need_ai,
     _merge_unique_products,
     _photo_candidate_query_limit,
+    _photo_result_intro_key,
     _photo_search_queries,
+    _photo_substitute_queries,
     _photo_text_fallback_products,
     _replace_status_message,
     _search_expansion_allowed,
@@ -589,6 +591,53 @@ def test_photo_text_fallback_requires_brand_when_brand_is_visible():
         products=[shoes, book, chocolate_bar, a4_bar],
         limit=10,
     ) == []
+
+
+def test_photo_substitute_queries_drop_brand_but_keep_safe_object_type():
+    photo_query = PhotoSearchQuery(
+        query="Snickers сникерс батончик",
+        alternative_queries=[],
+        confidence="high",
+        visible_product="Snickers chocolate bar",
+        object_type="батончик",
+        brand="Snickers",
+        visible_text="Snickers",
+        key_features=["шоколад"],
+    )
+
+    queries = _photo_substitute_queries(photo_query)
+
+    assert queries[0] == "батончик"
+    assert "шоколадный батончик" in queries
+    assert all("snickers" not in query.casefold() for query in queries)
+
+
+def test_photo_substitute_text_fallback_keeps_product_type_without_brand():
+    photo_query = PhotoSearchQuery(
+        query="Snickers сникерс батончик",
+        alternative_queries=[],
+        confidence="high",
+        visible_product="Snickers chocolate bar",
+        object_type="батончик",
+        brand="Snickers",
+        visible_text="Snickers",
+        key_features=["шоколад"],
+    )
+    chocolate_bar = product(1, "Батончик шоколадный Toren Choco Dino")
+    shoes = product(2, "Кроссовки мужские сникерсы")
+
+    assert _photo_text_fallback_products(
+        photo_query=photo_query,
+        products=[shoes, chocolate_bar],
+        limit=10,
+        require_brand=False,
+    ) == [chocolate_bar]
+
+
+def test_photo_result_intro_key_distinguishes_substitutes():
+    assert _photo_result_intro_key("ai") == "photo_found_intro"
+    assert _photo_result_intro_key("text") == "photo_text_fallback_intro"
+    assert _photo_result_intro_key("substitute") == "photo_substitute_intro"
 
 
 def test_photo_text_fallback_allows_unbranded_packaged_goods():

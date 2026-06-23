@@ -4,7 +4,7 @@ from dataclasses import replace
 
 from parsers.uzum_market.config import load_config
 from parsers.uzum_market.logging import configure_logging
-from parsers.uzum_market.pipeline import run_crawl
+from parsers.uzum_market.pipeline import run_crawl, run_search_backfill
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -17,6 +17,12 @@ def build_parser() -> argparse.ArgumentParser:
     crawl.add_argument("--dry-run", action="store_true")
     crawl.add_argument("--headful", action="store_true")
     crawl.add_argument("--log-level", default="INFO")
+    backfill_search = subparsers.add_parser("backfill-search")
+    backfill_search.add_argument("queries", nargs="+")
+    backfill_search.add_argument("--limit", type=int, default=100)
+    backfill_search.add_argument("--dry-run", action="store_true")
+    backfill_search.add_argument("--headful", action="store_true")
+    backfill_search.add_argument("--log-level", default="INFO")
     return parser
 
 
@@ -24,7 +30,7 @@ async def async_main() -> None:
     args = build_parser().parse_args()
     configure_logging(args.log_level)
     config = load_config()
-    if args.command == "crawl" and args.headful:
+    if args.headful:
         config = replace(config, browser_headless=False)
     if args.command == "crawl":
         limit = args.limit
@@ -35,6 +41,14 @@ async def async_main() -> None:
             mode=args.mode,
             limit=limit,
             resume=args.resume or args.mode == "resume",
+            dry_run=args.dry_run,
+        )
+        print(stats)
+    elif args.command == "backfill-search":
+        stats = await run_search_backfill(
+            config=config,
+            queries=args.queries,
+            limit=args.limit,
             dry_run=args.dry_run,
         )
         print(stats)

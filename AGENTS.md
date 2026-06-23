@@ -99,6 +99,7 @@ PYTHONPATH=server python server/manage.py makemigrations
 PYTHONPATH=server python server/manage.py migrate
 ./scripts/rebuild_product_search_index.sh --marketplace uzum
 ./scripts/rebuild_product_visual_index.sh --marketplace uzum
+./scripts/backfill_uzum_search.sh snickers "шоколадный батончик"
 ./scripts/audit_uzum_catalog.sh --require-checkpoint
 ```
 

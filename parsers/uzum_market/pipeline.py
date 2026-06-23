@@ -1,6 +1,6 @@
 import logging
 from datetime import UTC, datetime
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 from parsers.uzum_market.browser import BrowserBlockedError, UzumBrowserClient
 from parsers.uzum_market.config import ParserConfig
@@ -46,6 +46,7 @@ async def run_crawl(
         "updated": 0,
         "server_unchanged": 0,
         "skipped_unchanged": 0,
+        "skipped_existing_without_category": 0,
         "reactivated": 0,
         "failed": 0,
     }
@@ -82,15 +83,18 @@ async def run_crawl(
                 stats["seen"] += len(source_product_ids)
 
                 existing_states = await storage.get_product_states(source_product_ids)
-                changed_products = [
-                    product
-                    for product in products
-                    if _needs_upsert(
-                        product,
-                        existing_states.get(str(product["source_product_id"])),
-                    )
-                ]
-                stats["skipped_unchanged"] += len(products) - len(changed_products)
+                changed_products = []
+                skipped_unchanged = 0
+                for product in products:
+                    existing_state = existing_states.get(str(product["source_product_id"]))
+                    if not _needs_upsert(product, existing_state):
+                        skipped_unchanged += 1
+                        continue
+                    if existing_state is not None and not _has_category(product):
+                        stats["skipped_existing_without_category"] += 1
+                        continue
+                    changed_products.append(product)
+                stats["skipped_unchanged"] += skipped_unchanged
                 stats["changed"] += len(changed_products)
                 for chunk in _chunks(changed_products, config.batch_size):
                     result = await storage.upsert_products(chunk, crawl_run_id)
@@ -268,6 +272,113 @@ async def run_crawl(
     return stats
 
 
+async def run_search_backfill(
+    *,
+    config: ParserConfig,
+    queries: list[str],
+    limit: int | None,
+    dry_run: bool,
+) -> dict:
+    normalized_queries = []
+    seen_queries = set()
+    for query in queries:
+        normalized = " ".join(query.split())
+        key = normalized.casefold()
+        if not normalized or key in seen_queries:
+            continue
+        normalized_queries.append(normalized)
+        seen_queries.add(key)
+
+    storage = ServerStorage(config, dry_run=dry_run)
+    crawl_run_id = await storage.start_crawl_run(
+        "search_backfill",
+        {"dry_run": dry_run, "queries": normalized_queries, "limit_per_query": limit},
+    )
+    stats = {
+        "queries": len(normalized_queries),
+        "discovered": 0,
+        "seen": 0,
+        "changed": 0,
+        "created": 0,
+        "updated": 0,
+        "server_unchanged": 0,
+        "skipped_unchanged": 0,
+        "reactivated": 0,
+        "failed": 0,
+    }
+
+    try:
+        async with UzumBrowserClient(config) as client:
+            for query in normalized_queries:
+                try:
+                    products = await client.collect_search_products(query, limit=limit)
+                except BrowserBlockedError as error:
+                    logger.warning("%s", error)
+                    await storage.create_event(
+                        crawl_run_id,
+                        "warning",
+                        "blocked",
+                        str(error),
+                        url=_search_url(query),
+                    )
+                    raise
+                except Exception as error:
+                    logger.exception("Failed to backfill Uzum search query %r", query)
+                    stats["failed"] += 1
+                    await storage.create_event(
+                        crawl_run_id,
+                        "error",
+                        "search_backfill_failed",
+                        str(error),
+                        url=_search_url(query),
+                    )
+                    continue
+
+                stats["discovered"] += len(products)
+                source_product_ids = [
+                    str(product["source_product_id"])
+                    for product in products
+                    if product.get("source_product_id")
+                ]
+                await storage.record_seen_product_ids(crawl_run_id, source_product_ids)
+                stats["seen"] += len(source_product_ids)
+
+                existing_states = await storage.get_product_states(source_product_ids)
+                changed_products = [
+                    product
+                    for product in products
+                    if _needs_upsert(
+                        product,
+                        existing_states.get(str(product["source_product_id"])),
+                    )
+                ]
+                stats["skipped_unchanged"] += len(products) - len(changed_products)
+                stats["changed"] += len(changed_products)
+                for chunk in _chunks(changed_products, config.batch_size):
+                    result = await storage.upsert_products(chunk, crawl_run_id)
+                    stats["created"] += result.get("created_count", 0)
+                    stats["updated"] += result.get("updated_count", 0)
+                    stats["server_unchanged"] += result.get("unchanged_count", 0)
+                    stats["reactivated"] += result.get("reactivated_count", 0)
+
+        completion_status = "success" if stats["failed"] == 0 else "partial"
+        await storage.finish_crawl_run(
+            crawl_run_id,
+            status=completion_status,
+            deactivate_unseen=False,
+            metadata=stats,
+        )
+        return stats
+    except Exception:
+        await storage.finish_crawl_run(
+            crawl_run_id,
+            status="failed",
+            deactivate_unseen=False,
+            metadata=stats,
+        )
+        raise
+
+
 async def _record_seen_product_ids(
     storage: ServerStorage,
     crawl_run_id: int | None,
@@ -286,12 +397,25 @@ def _chunks(items: list, size: int):
         yield items[index : index + size]
 
 
+def _search_url(query: str) -> str:
+    return f"https://uzum.uz/ru/search?{urlencode({'query': query})}"
+
+
 def _needs_upsert(product: dict, existing_state: dict | None) -> bool:
     if existing_state is None:
         return True
     if not existing_state.get("is_active", True):
         return True
     return existing_state.get("content_hash") != product["content_hash"]
+
+
+def _has_category(product: dict) -> bool:
+    category = product.get("category") or {}
+    return bool(
+        product.get("category_path_text")
+        or category.get("name")
+        or category.get("path_text")
+    )
 
 
 def _clear_failed_category_urls(

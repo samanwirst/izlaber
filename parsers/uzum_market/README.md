@@ -8,6 +8,7 @@ The parser now uses a real local Chrome profile through direct Chrome DevTools P
 
 ```bash
 ./scripts/run_uzum_full.sh
+./scripts/backfill_uzum_search.sh snickers "шоколадный батончик"
 ./scripts/audit_uzum_catalog.sh --require-checkpoint
 UZUM_LIMIT=100 UZUM_DRY_RUN=true ./scripts/run_uzum_full.sh
 UZUM_DISCOVERY_START_URLS=https://uzum.uz/ru/category/elektronika-10020 ./scripts/run_uzum_full.sh
@@ -17,6 +18,7 @@ python -m parsers.uzum_market.cli crawl --mode full
 python -m parsers.uzum_market.cli crawl --mode full --resume
 python -m parsers.uzum_market.cli crawl --mode full --headful
 python -m parsers.uzum_market.cli crawl --mode full --dry-run
+python -m parsers.uzum_market.cli backfill-search snickers --limit 100 --headful
 ```
 
 Required env:
@@ -46,6 +48,7 @@ Notes:
 - The parser initializes its own runtime Chrome profile in `UZUM_BROWSER_RUNTIME_PROFILE_DIR`. On the first run it seeds that profile from your local Chrome profile; later runs reuse the saved browser state, which helps preserve cookies and any anti-bot/session state across launches.
 - Discovery opens `https://uzum.uz/ru/category/vse-kategorii-1`, reads the real `root-categories` API response from the browser session, and synthesizes leaf category URLs from the full category tree. Leaf categories avoid repeatedly crawling parent categories that mostly aggregate duplicate child products.
 - Product crawling uses the site's `MakeSearch_ItemsAndFilters` GraphQL operation after capturing the query and required headers from the live browser session. The crawler requests category cards in API batches of 100 by `categoryId + offset`, so it does not render every category page or scroll the DOM during the main crawl. DOM extraction remains as a fallback for URLs that cannot be served through GraphQL.
+- `./scripts/backfill_uzum_search.sh <query...>` uses the same captured GraphQL operation with `text` search input. Use it for targeted catalog gaps found by bot/photo analytics, for example a brand or product type that is missing from the local database. It writes only new/changed cards through the ingestion API and never deactivates unseen products.
 - Full runs are delta-updated. The parser still scans listing cards to detect new, changed, and deleted products, but before writing products it asks the server for existing `source_product_id -> content_hash` values. Unchanged cards are skipped and do not rewrite `Product` rows. The server records `seen_products` for the crawl run and deactivates only active products not seen in a successful unlimited full run.
 - A completed checkpoint is treated as historical state. Re-running `./scripts/run_uzum_full.sh` starts a fresh delta scan instead of skipping all categories from the previous successful run. If a run crashes before completion, the same command resumes from the unfinished checkpoint.
 - `UZUM_LIMIT` is safe for tests: limited runs do not deactivate unseen products.

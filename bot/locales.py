@@ -149,6 +149,10 @@ LOCALES: dict[str, LocaleCopy] = {
                 "Aniq vizual moslik topilmadi. <b>{query}</b> bo'yicha eng yaqin "
                 "{count} ta variantni ko'rsataman:"
             ),
+            "photo_substitute_intro": (
+                "Foto bo'yicha aniq brend/tovar katalogda topilmadi. <b>{query}</b> "
+                "turiga yaqin {count} ta o'rinbosar variantni ko'rsataman; bu aniq moslik emas:"
+            ),
             "photo_no_results": (
                 "Foto bo'yicha shunday tushundim: <b>{query}</b>, lekin yetarlicha o'xshash "
                 "mahsulot topilmadi. Boshqa burchakdan foto yuboring yoki nomini yozing."
@@ -344,6 +348,10 @@ LOCALES: dict[str, LocaleCopy] = {
             "photo_text_fallback_intro": (
                 "Точного визуального совпадения не нашел. Показываю ближайшие "
                 "{count} вариантов по описанию <b>{query}</b>:"
+            ),
+            "photo_substitute_intro": (
+                "Точный товар или бренд по фото в каталоге не нашел. Показываю "
+                "{count} похожих заменителей по типу <b>{query}</b>; это не точное совпадение:"
             ),
             "photo_no_results": (
                 "По фото понял: <b>{query}</b>, но достаточно похожий товар в каталоге "
@@ -545,6 +553,11 @@ LOCALES: dict[str, LocaleCopy] = {
             "photo_text_fallback_intro": (
                 "I did not find an exact visual match. Showing the closest {count} "
                 "options by description <b>{query}</b>:"
+            ),
+            "photo_substitute_intro": (
+                "I did not find the exact product or brand from the photo in the catalog. "
+                "Showing {count} similar substitutes by type <b>{query}</b>; "
+                "this is not an exact match:"
             ),
             "photo_no_results": (
                 "From the photo, I understood: <b>{query}</b>, but did not find a close "

@@ -319,6 +319,61 @@ class UzumBrowserClient:
             products.append(normalized)
         return products
 
+    async def collect_search_products(self, text: str, *, limit: int | None) -> list[dict]:
+        query = " ".join(text.split())
+        if not query:
+            return []
+
+        source_url = self._search_url(query)
+        products: list[dict] = []
+        seen_product_ids: set[str] = set()
+        offset = 0
+        total: int | None = None
+
+        while limit is None or len(products) < limit:
+            page_limit = GRAPHQL_PAGE_SIZE
+            if limit is not None:
+                page_limit = min(page_limit, limit - len(products))
+            if page_limit <= 0:
+                break
+
+            search_data = await self._fetch_graphql_search(
+                source_url,
+                text=query,
+                filters=[],
+                offset=offset,
+                limit=page_limit,
+            )
+            if search_data is None:
+                break
+
+            total = int(search_data.get("total") or 0)
+            items = search_data.get("items") or []
+            if not items:
+                break
+
+            category = search_data.get("category") or {}
+            for item in items:
+                card = (item or {}).get("catalogCard") or {}
+                product_id = card.get("productId") or card.get("id")
+                if not product_id or str(product_id) in seen_product_ids:
+                    continue
+                seen_product_ids.add(str(product_id))
+                product = self._normalize_graphql_card(card, category, source_url)
+                product["raw_data"] = {
+                    **(product.get("raw_data") or {}),
+                    "search_query": query,
+                }
+                products.append(product)
+                if limit is not None and len(products) >= limit:
+                    break
+
+            offset += page_limit
+            if total is not None and offset >= min(total, GRAPHQL_MAX_OFFSET_ITEMS):
+                break
+
+        return products
+
     async def collect_category_page_urls(self, url: str) -> list[str]:
         category_id = self._category_id_from_url(url)
         if category_id:
@@ -359,7 +414,7 @@ class UzumBrowserClient:
         offset = (page_number - 1) * GRAPHQL_PAGE_SIZE
         search_data = await self._fetch_graphql_search(
             url,
-            category_id,
+            category_id=category_id,
             filters=filters,
             offset=offset,
             limit=GRAPHQL_PAGE_SIZE,
@@ -476,33 +531,42 @@ class UzumBrowserClient:
     async def _fetch_graphql_search(
         self,
         source_url: str,
-        category_id: str,
         *,
+        category_id: str | None = None,
+        text: str | None = None,
         filters: list[dict] | None = None,
         offset: int,
         limit: int,
     ) -> dict | None:
+        if not category_id and not text:
+            raise ValueError("GraphQL search requires category_id or text.")
+
         await self._ensure_graphql_search(source_url)
         if not self._session or not self._graphql_headers or not self._graphql_search_query:
             return None
 
+        query_input = {
+            "showAdultContent": "TRUE",
+            "filters": filters or [],
+            "sort": "BY_RELEVANCE_DESC",
+            "pagination": {"offset": offset, "limit": limit},
+            "correctQuery": False,
+            "getFastCategories": True,
+            "fastCategoriesLimit": 11,
+            "fastCategoriesLevelOffset": 1,
+            "getPromotionItems": True,
+            "getFastFacets": True,
+            "fastFacetsLimit": 10,
+        }
+        if category_id:
+            query_input["categoryId"] = category_id
+        if text:
+            query_input["text"] = text
+
         payload = {
             "operationName": "MakeSearch_ItemsAndFilters",
             "variables": {
-                "queryInput": {
-                    "categoryId": category_id,
-                    "showAdultContent": "TRUE",
-                    "filters": filters or [],
-                    "sort": "BY_RELEVANCE_DESC",
-                    "pagination": {"offset": offset, "limit": limit},
-                    "correctQuery": False,
-                    "getFastCategories": True,
-                    "fastCategoriesLimit": 11,
-                    "fastCategoriesLevelOffset": 1,
-                    "getPromotionItems": True,
-                    "getFastFacets": True,
-                    "fastFacetsLimit": 10,
-                }
+                "queryInput": query_input
             },
             "query": self._graphql_search_query,
         }
@@ -543,7 +607,7 @@ class UzumBrowserClient:
     ) -> list[tuple[list[dict], int]]:
         root_data = await self._fetch_graphql_search(
             source_url,
-            category_id,
+            category_id=category_id,
             filters=[],
             offset=0,
             limit=0,
@@ -588,7 +652,7 @@ class UzumBrowserClient:
         filters = [self._price_filter(min_price, max_price)]
         data = await self._fetch_graphql_search(
             source_url,
-            category_id,
+            category_id=category_id,
             filters=filters,
             offset=0,
             limit=0,
@@ -745,6 +809,15 @@ class UzumBrowserClient:
             if isinstance(photo, dict)
         ]
         category_title = category.get("title") or category.get("title_ru")
+        category_payload = None
+        if category.get("id") or category_title:
+            category_payload = {
+                "source_category_id": category.get("id"),
+                "name": category_title,
+                "path_text": category_title,
+                "url": category_url,
+                "raw_data": category,
+            }
         raw = {
             "source_product_id": product_id,
             "title": card.get("title"),
@@ -755,13 +828,7 @@ class UzumBrowserClient:
             "cover_image_url": next((url for url in image_urls if url), None),
             "image_urls": [url for url in image_urls if url],
             "availability": "available" if delivery_options else "unknown",
-            "category": {
-                "source_category_id": category.get("id"),
-                "name": category_title,
-                "path_text": category_title,
-                "url": category_url,
-                "raw_data": category,
-            },
+            "category": category_payload,
             "category_path_text": category_title,
             "raw_data": {
                 "source": "graphql_make_search",
@@ -987,6 +1054,10 @@ class UzumBrowserClient:
                 fragment="",
             )
         )
+
+    @staticmethod
+    def _search_url(query: str) -> str:
+        return f"{BASE_URL}/ru/search?{urlencode({'query': query})}"
 
     @staticmethod
     def _filters_to_query_value(filters: list[dict]) -> str:
