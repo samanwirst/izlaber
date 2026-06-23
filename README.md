@@ -131,6 +131,8 @@ Optional rerank:
 - By default `OPENAI_RERANK_FALLBACK_ONLY=true`: the bot first returns fast PostgreSQL results and calls OpenAI only when the local top results look weak.
 - Photo search uses a visual matching pipeline: the bot understands the user photo, fetches a small candidate set from PostgreSQL, then visually reranks candidate cover images. This avoids returning every generic mug or cream.
 - If the photo model detects a visible brand, candidates without that brand are not treated as exact visual matches even if the product type is similar.
+- Known packaged-goods brands with stable product types can be normalized after vision. For example, if a Snickers photo is misclassified as chips/snacks, the bot rewrites the search intent to `Snickers шоколадный батончик` before querying the catalog.
+- Photo recognition stores lightweight `photo_identified` and `photo_search_result` analytics events and logs candidate query counts. These records contain text metadata only, not the uploaded photo.
 - Voice messages are transcribed to text, then passed through the same product search pipeline.
 - `OPENAI_PHOTO_VISUAL_RERANK_LIMIT` controls how many candidate covers are sent to the model. Keep it around `12-16` for a good cost/quality balance.
 - `OPENAI_VOICE_MODEL=gpt-4o-mini-transcribe` is the cheapest practical option for Telegram voice notes in the current stack.

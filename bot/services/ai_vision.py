@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,6 +17,31 @@ from bot.services.ai_runtime import ai_runtime_state
 from bot.services.api_client import ProductDTO
 
 logger = logging.getLogger(__name__)
+TOKEN_RE = re.compile(r"[0-9a-zа-яё]+", re.IGNORECASE)
+KNOWN_PACKAGED_PRODUCT_OVERRIDES = {
+    "snickers": {
+        "query": "Snickers шоколадный батончик",
+        "alternative_queries": [
+            "Snickers батончик",
+            "сникерс батончик",
+            "Snickers chocolate bar",
+        ],
+        "object_type": "батончик",
+        "visible_product": "Snickers chocolate bar",
+        "key_features": ["шоколадный батончик"],
+    },
+    "сникерс": {
+        "query": "Snickers шоколадный батончик",
+        "alternative_queries": [
+            "Snickers батончик",
+            "сникерс батончик",
+            "Snickers chocolate bar",
+        ],
+        "object_type": "батончик",
+        "visible_product": "Snickers chocolate bar",
+        "key_features": ["шоколадный батончик"],
+    },
+}
 
 
 class AIPhotoSearchError(RuntimeError):
@@ -230,7 +256,7 @@ def parse_photo_search_output(output_text: str) -> PhotoSearchQuery:
     brand = value.get("brand")
     visible_text = value.get("visible_text")
     key_features = value.get("key_features")
-    return PhotoSearchQuery(
+    photo_query = PhotoSearchQuery(
         query=query,
         alternative_queries=alternatives,
         confidence=confidence,
@@ -240,6 +266,7 @@ def parse_photo_search_output(output_text: str) -> PhotoSearchQuery:
         visible_text=_short(visible_text if isinstance(visible_text, str) else "", 160),
         key_features=_clean_features(key_features),
     )
+    return _normalize_known_packaged_product(photo_query)
 
 
 def _enabled(config: Config) -> bool:
@@ -248,6 +275,82 @@ def _enabled(config: Config) -> bool:
         and config.openai_api_key
         and ai_runtime_state.ai_allowed()
     )
+
+
+def _normalize_known_packaged_product(photo_query: PhotoSearchQuery) -> PhotoSearchQuery:
+    brand_tokens = set(_tokens(photo_query.brand))
+    visible_tokens = set(_tokens(photo_query.visible_text))
+    query_tokens = set(_tokens(photo_query.query))
+    override = next(
+        (
+            KNOWN_PACKAGED_PRODUCT_OVERRIDES[token]
+            for token in (*brand_tokens, *visible_tokens, *query_tokens)
+            if token in KNOWN_PACKAGED_PRODUCT_OVERRIDES
+        ),
+        None,
+    )
+    if override is None:
+        return photo_query
+
+    alternatives = _merge_alternatives(override["alternative_queries"])
+    features = _merge_features(
+        override["key_features"],
+        photo_query.key_features or [],
+    )
+    visible_product = (
+        photo_query.visible_product
+        if "snickers" in _tokens(photo_query.visible_product)
+        else override["visible_product"]
+    )
+    return PhotoSearchQuery(
+        query=override["query"],
+        alternative_queries=alternatives,
+        confidence=photo_query.confidence,
+        visible_product=_short(visible_product, 120),
+        object_type=override["object_type"],
+        brand="Snickers",
+        visible_text=photo_query.visible_text,
+        key_features=features,
+    )
+
+
+def _merge_alternatives(*groups: list[str] | tuple[str, ...] | str) -> list[str]:
+    alternatives: list[str] = []
+    seen: set[str] = set()
+    for group in groups:
+        values = [group] if isinstance(group, str) else group
+        for value in values:
+            cleaned = _clean_query(value)
+            key = cleaned.casefold()
+            if not cleaned or key in seen:
+                continue
+            alternatives.append(cleaned)
+            seen.add(key)
+            if len(alternatives) >= 5:
+                return alternatives
+    return alternatives
+
+
+def _merge_features(*groups: list[str] | tuple[str, ...]) -> list[str]:
+    features: list[str] = []
+    seen: set[str] = set()
+    for group in groups:
+        for value in group:
+            cleaned = _short(" ".join(str(value).split()), 80)
+            key = cleaned.casefold()
+            if not cleaned or key in seen:
+                continue
+            features.append(cleaned)
+            seen.add(key)
+            if len(features) >= 8:
+                return features
+    return features
+
+
+def _tokens(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [token.lower() for token in TOKEN_RE.findall(value)]
 
 
 def _instructions() -> str:

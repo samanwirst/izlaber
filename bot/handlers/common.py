@@ -375,6 +375,31 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
             config=config,
         )
         if photo_query is not None:
+            logger.info(
+                "Photo identified: query=%r brand=%r object_type=%r confidence=%s "
+                "alternatives=%r",
+                photo_query.query,
+                photo_query.brand,
+                photo_query.object_type,
+                photo_query.confidence,
+                photo_query.alternative_queries,
+            )
+            await track_message_event(
+                config=config,
+                message=message,
+                event_type="photo_identified",
+                language_code=language,
+                input_type="photo",
+                query=photo_query.query,
+                metadata={
+                    "brand": photo_query.brand,
+                    "object_type": photo_query.object_type,
+                    "visible_text": photo_query.visible_text,
+                    "visible_product": photo_query.visible_product,
+                    "confidence": photo_query.confidence,
+                    "alternative_queries": photo_query.alternative_queries,
+                },
+            )
             (
                 used_query,
                 ranked_products,
@@ -389,6 +414,15 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
                 return
             if not ranked_products:
                 search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
+                await _track_photo_search_result(
+                    config=config,
+                    message=message,
+                    language=language,
+                    photo_query=photo_query,
+                    used_query=used_query,
+                    mode=photo_match_mode,
+                    result_count=0,
+                )
                 await _replace_status_message(
                     status_message,
                     format_message("photo_no_results", language, query=photo_query.query),
@@ -405,6 +439,15 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
                 products=ranked_products,
                 offset=len(products),
                 candidate_offset=-1,
+            )
+            await _track_photo_search_result(
+                config=config,
+                message=message,
+                language=language,
+                photo_query=photo_query,
+                used_query=used_query,
+                mode=photo_match_mode,
+                result_count=len(products),
             )
             await _replace_status_message(
                 status_message,
@@ -1220,6 +1263,11 @@ async def _load_photo_ranked_candidates(
                     limit=query_limit,
                     offset=0,
                 )
+                logger.info(
+                    "Photo candidate query=%r returned %s products.",
+                    query,
+                    len(query_products),
+                )
                 if query_products and not products:
                     used_query = query
                 products = _merge_unique_products(
@@ -1304,6 +1352,37 @@ async def _load_photo_ranked_candidates(
     if substitute_products:
         return substitute_query, substitute_products, "substitute"
     return used_query, [], "none"
+
+
+async def _track_photo_search_result(
+    *,
+    config: Config,
+    message: Message,
+    language: str,
+    photo_query: PhotoSearchQuery,
+    used_query: str,
+    mode: str,
+    result_count: int,
+) -> None:
+    await track_message_event(
+        config=config,
+        message=message,
+        event_type="photo_search_result",
+        language_code=language,
+        input_type="photo",
+        query=used_query,
+        result_count=result_count,
+        metadata={
+            "mode": mode,
+            "identified_query": photo_query.query,
+            "brand": photo_query.brand,
+            "object_type": photo_query.object_type,
+            "visible_text": photo_query.visible_text,
+            "visible_product": photo_query.visible_product,
+            "confidence": photo_query.confidence,
+            "alternative_queries": photo_query.alternative_queries,
+        },
+    )
 
 
 def _photo_result_intro_key(mode: str) -> str:

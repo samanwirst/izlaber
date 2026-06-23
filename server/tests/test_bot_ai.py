@@ -553,6 +553,39 @@ def test_photo_search_queries_prioritize_latin_brand_and_object_type():
     assert _photo_search_queries(parsed)[0] == "Snickers батончик"
 
 
+def test_photo_search_normalizes_snickers_snack_misclassification():
+    parsed = parse_photo_search_output(
+        """
+        {
+          "query": "Snickers чипсы Не тормози снеки",
+          "alternative_queries": ["Snickers snek", "Snickers snack"],
+          "confidence": "high",
+          "visible_product": "Snickers snack package",
+          "object_type": "чипсы",
+          "brand": "Snickers",
+          "visible_text": "Snickers Не тормози",
+          "key_features": ["коричневая упаковка", "снеки"]
+        }
+        """
+    )
+
+    assert parsed.query == "Snickers шоколадный батончик"
+    assert parsed.object_type == "батончик"
+    assert parsed.brand == "Snickers"
+
+    queries = _photo_search_queries(parsed)
+
+    assert queries[:5] == [
+        "Snickers батончик",
+        "Snickers шоколадный батончик",
+        "Snickers chocolate bar",
+        "Snickers snack bar",
+        "сникерс батончик",
+    ]
+    assert all("чипс" not in query.casefold() for query in queries)
+    assert all("snek" not in query.casefold() for query in queries)
+
+
 def test_photo_search_queries_add_multilingual_packaged_goods_aliases():
     photo_query = PhotoSearchQuery(
         query="Coca Cola напиток",
