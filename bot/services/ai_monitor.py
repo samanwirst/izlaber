@@ -60,10 +60,10 @@ async def _send_status_event(bot: Bot, config: Config, event: AIStatusEvent) -> 
 
     if event.kind == "disabled":
         text = (
-            "OpenAI API quota/balance exhausted. "
+            "OpenAI API is unavailable because of quota, billing, region, or API access. "
             "AI mode is disabled; bot now uses local catalog search only. "
             f"I will retry every {int(config.openai_balance_probe_interval)} seconds and "
-            "enable AI automatically after balance is replenished."
+            "enable AI automatically after access is restored."
         )
     elif event.kind == "enabled":
         text = "OpenAI API is available again. AI mode is enabled automatically."

@@ -349,7 +349,11 @@ def _is_quota_exhausted_response(*, status: int, body: str) -> bool:
         message = str(error.get("message") or body)
 
     normalized_message = message.lower()
-    if error_code in {"insufficient_quota", "billing_hard_limit_reached"}:
+    if error_code in {
+        "billing_hard_limit_reached",
+        "insufficient_quota",
+        "unsupported_country_region_territory",
+    }:
         return True
     if error_type in {"insufficient_quota", "billing_error"}:
         return True
@@ -365,6 +369,7 @@ def _is_quota_exhausted_response(*, status: int, body: str) -> bool:
             "monthly spend",
             "usage limit",
             "billing details",
+            "country, region, or territory not supported",
         )
     )
 

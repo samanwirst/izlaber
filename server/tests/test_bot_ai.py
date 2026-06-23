@@ -416,6 +416,13 @@ def test_quota_error_detection_does_not_confuse_rate_limit():
             'please check your plan and billing details"}}'
         ),
     )
+    assert _is_quota_exhausted_response(
+        status=403,
+        body=(
+            '{"error":{"code":"unsupported_country_region_territory",'
+            '"message":"Country, region, or territory not supported"}}'
+        ),
+    )
     assert not _is_quota_exhausted_response(
         status=429,
         body='{"error":{"message":"Rate limit reached for requests"}}',
