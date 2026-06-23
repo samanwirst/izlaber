@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from decimal import Decimal
 
 from django.db import connection
-from django.db.models import Count, Max, Q, Sum
+from django.db.models import Count, Max, Sum
 
 from apps.catalog.models import ProductSearchTerm
 
@@ -26,6 +26,10 @@ SOURCE_ID_WEIGHT = 1
 QUERY_SYNONYMS = {
     "айфон": {"айфон", "iphone"},
     "iphone": {"iphone", "айфон"},
+    "snickers": {"snickers", "сникерс"},
+    "сникерс": {"сникерс", "snickers"},
+}
+PROTECTED_QUERY_SYNONYMS = {
     "snickers": {"snickers", "сникерс"},
     "сникерс": {"сникерс", "snickers"},
 }
@@ -347,11 +351,8 @@ def search_product_ids(
 
 def _filter_queryset_by_required_groups(queryset, required_term_groups: list[set[str]]):
     for group in required_term_groups:
-        group_filter = Q()
-        for term in sorted(group):
-            group_filter |= Q(product__search_text__icontains=term)
-        if group_filter:
-            queryset = queryset.filter(group_filter)
+        if group:
+            queryset = queryset.filter(product__search_terms__term__in=group)
     return queryset
 
 
@@ -387,15 +388,18 @@ def protected_query_term_groups(query: str) -> list[set[str]]:
     token_set = set(tokens)
     has_latin = any(LATIN_RE.search(token) for token in token_set)
     has_cyrillic = any(re.search(r"[а-яё]", token, re.IGNORECASE) for token in token_set)
-    if not has_latin or not has_cyrillic:
-        return []
 
     groups: list[set[str]] = []
     seen_groups: set[tuple[str, ...]] = set()
     for token in tokens:
-        if not LATIN_RE.search(token) or token in COMMON_LATIN_DESCRIPTOR_TOKENS:
+        if token in PROTECTED_QUERY_SYNONYMS:
+            group = {value for value in PROTECTED_QUERY_SYNONYMS[token] if len(value) >= 3}
+        elif has_latin and has_cyrillic:
+            if not LATIN_RE.search(token) or token in COMMON_LATIN_DESCRIPTOR_TOKENS:
+                continue
+            group = {value for value in QUERY_SYNONYMS.get(token, {token}) if len(value) >= 3}
+        else:
             continue
-        group = {value for value in QUERY_SYNONYMS.get(token, {token}) if len(value) >= 3}
         if not group:
             continue
         key = tuple(sorted(group))
@@ -672,8 +676,8 @@ def _fetch_postgres_product_ids(
     for group in required_term_groups or []:
         group_clauses = []
         for term in sorted(group):
-            group_clauses.append("LOWER(p.search_text) LIKE %s")
-            params.append(f"%{term.lower()}%")
+            group_clauses.append("LOWER(p.search_text) ~ %s")
+            params.append(_token_regex(term))
         if group_clauses:
             where_clauses.append(f"({' OR '.join(group_clauses)})")
 
@@ -702,6 +706,11 @@ def _fetch_postgres_product_ids(
 
 def _tsquery(terms: list[str], *, operator: str) -> str:
     return operator.join(f"{term}:*" for term in terms if term)
+
+
+def _token_regex(term: str) -> str:
+    escaped = re.escape(term.lower())
+    return rf"(^|[^0-9a-zа-яё]){escaped}([^0-9a-zа-яё]|$)"
 
 
 def _postgres_intent_order_sql(query: str) -> str:

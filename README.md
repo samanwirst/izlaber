@@ -117,6 +117,10 @@ Product search uses PostgreSQL FTS/trigram indexes when `DATABASE_URL` points to
 PostgreSQL, and falls back to the token index on SQLite. Rebuild the local search
 data after large manual DB imports:
 
+Protected brand terms such as `Snickers/сникерс` must match whole tokens, not
+substrings. This prevents false positives like matching chocolate brand searches
+to footwear titles containing `сникерсы`.
+
 ```bash
 ./scripts/rebuild_product_search_index.sh --marketplace uzum
 ```

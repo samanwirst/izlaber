@@ -1,3 +1,5 @@
+import re
+
 from apps.catalog import search as catalog_search
 from apps.catalog.models import Product, ProductSearchTerm, ProductSnapshot
 from apps.catalog.search import (
@@ -98,10 +100,13 @@ def test_search_query_skips_price_noise_and_extracts_price_filter():
 
 
 def test_search_protects_latin_brand_in_mixed_query():
+    assert protected_query_term_groups("Snickers") == [{"snickers", "сникерс"}]
     assert protected_query_term_groups("Snickers шоколадный батончик") == [
         {"snickers", "сникерс"}
     ]
+    assert protected_query_term_groups("сникерс батончик") == [{"snickers", "сникерс"}]
     assert protected_query_term_groups("white sneakers") == []
+    assert catalog_search._token_regex("сникерс")
 
 
 def test_search_does_not_relax_away_latin_brand(db):
@@ -131,6 +136,13 @@ def test_search_does_not_relax_away_latin_brand(db):
     )
 
     assert product_ids == [Product.objects.get(source_product_id="snickers").id]
+
+
+def test_snickers_brand_does_not_match_sneaker_word():
+    pattern = catalog_search._token_regex("сникерс")
+
+    assert re.search(pattern, "батончик сникерс, 50 г")
+    assert not re.search(pattern, "кроссовки сникерсы")
 
 
 def test_search_relaxes_extra_visual_details_without_losing_product_type(db):
