@@ -14,6 +14,7 @@
 | Changing search fields without rebuild plan | Old rows may stay stale. | Run or document search/visual index rebuild. |
 | Returning full products from list API | Slows bot search. | Keep list payload compact. |
 | Unbounded AI candidate/image/audio flow | Cost and latency spikes. | Keep limits/timeouts and fallback paths. |
+| Allowing parallel bot searches per user | Telegram spam can start many expensive AI/API handlers before sliding-window limits react. | Preserve the bot in-flight search gate and test it when changing middleware. |
 | Enabling analytics cookies without consent/policy | Creates legal and trust risk. | Keep cookies off by default until privacy text and consent are ready. |
 
 ## Files To Avoid Touching Casually

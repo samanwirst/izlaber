@@ -11,13 +11,19 @@ from bot.config import Config
 from bot.keyboards.consent import is_consent_accept_text
 from bot.keyboards.main_menu import is_more_button_text
 from bot.locales import format_message, language_from_message, normalize_language_code
-from bot.services.rate_limit import RateLimitRule, rate_limiter
+from bot.services.rate_limit import RateLimitRule, rate_limiter, search_inflight_gate
 
 GENERAL_SCOPE = "general"
 SEARCH_SCOPE = "search"
 AI_SCOPE = "ai"
 NOTICE_SCOPE = "rate_limit_notice"
+SEARCH_IN_PROGRESS_SCOPE = "search_in_progress"
 NOTICE_RULE = RateLimitRule(scope=NOTICE_SCOPE, max_events=1, window_seconds=10)
+SEARCH_IN_PROGRESS_NOTICE_RULE = RateLimitRule(
+    scope=f"{SEARCH_IN_PROGRESS_SCOPE}_notice",
+    max_events=1,
+    window_seconds=8,
+)
 
 
 class RateLimitMiddleware(BaseMiddleware):
@@ -35,27 +41,55 @@ class RateLimitMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         user_id = _user_id(event)
-        if user_id is None or _admin_bypasses_limit(user_id, config):
+        if user_id is None:
             return await handler(event, data)
 
         rules = _event_rules(event, config)
-        async with self._lock:
-            decision = rate_limiter.check_many(user_id=user_id, rules=rules)
-            can_notify = decision.allowed or rate_limiter.check(
+        scopes = {rule.scope for rule in rules}
+        gate_acquired = False
+
+        if config.search_inflight_limit_enabled and SEARCH_SCOPE in scopes:
+            gate_acquired = await search_inflight_gate.acquire(
                 user_id=user_id,
-                rule=NOTICE_RULE,
-            ).allowed
-
-        if decision.allowed:
-            return await handler(event, data)
-
-        if can_notify:
-            await _send_rate_limit_notice(
-                event,
-                scope=decision.scope,
-                retry_after_seconds=decision.retry_after_seconds,
+                scope=SEARCH_IN_PROGRESS_SCOPE,
             )
-        return None
+            if not gate_acquired:
+                async with self._lock:
+                    can_notify = rate_limiter.check(
+                        user_id=user_id,
+                        rule=SEARCH_IN_PROGRESS_NOTICE_RULE,
+                    ).allowed
+                if can_notify:
+                    await _send_search_in_progress_notice(event)
+                return None
+
+        try:
+            if _admin_bypasses_limit(user_id, config, scopes=scopes):
+                return await handler(event, data)
+
+            async with self._lock:
+                decision = rate_limiter.check_many(user_id=user_id, rules=rules)
+                can_notify = decision.allowed or rate_limiter.check(
+                    user_id=user_id,
+                    rule=NOTICE_RULE,
+                ).allowed
+
+            if decision.allowed:
+                return await handler(event, data)
+
+            if can_notify:
+                await _send_rate_limit_notice(
+                    event,
+                    scope=decision.scope,
+                    retry_after_seconds=decision.retry_after_seconds,
+                )
+            return None
+        finally:
+            if gate_acquired:
+                await search_inflight_gate.release(
+                    user_id=user_id,
+                    scope=SEARCH_IN_PROGRESS_SCOPE,
+                )
 
 
 def _event_rules(event: TelegramObject, config: Config) -> list[RateLimitRule]:
@@ -75,7 +109,7 @@ def _event_rules(event: TelegramObject, config: Config) -> list[RateLimitRule]:
                 window_seconds=config.search_rate_limit_window_seconds,
             )
         )
-    if AI_SCOPE in scopes:
+    if AI_SCOPE in scopes or _text_search_can_use_ai(event, config):
         rules.append(
             RateLimitRule(
                 scope=AI_SCOPE,
@@ -84,6 +118,20 @@ def _event_rules(event: TelegramObject, config: Config) -> list[RateLimitRule]:
             )
         )
     return rules
+
+
+def _text_search_can_use_ai(event: TelegramObject, config: Config) -> bool:
+    if not isinstance(event, Message):
+        return False
+    text = (event.text or "").strip()
+    if (
+        not text
+        or text.startswith("/")
+        or is_more_button_text(text)
+        or is_consent_accept_text(text)
+    ):
+        return False
+    return bool(config.openai_rerank_enabled or config.openai_search_expand_enabled)
 
 
 def _event_scopes(event: TelegramObject) -> set[str]:
@@ -123,7 +171,14 @@ def _user_id(event: TelegramObject) -> int | None:
     return None
 
 
-def _admin_bypasses_limit(user_id: int, config: Config) -> bool:
+def _admin_bypasses_limit(
+    user_id: int,
+    config: Config,
+    *,
+    scopes: set[str] | None = None,
+) -> bool:
+    if scopes and (SEARCH_SCOPE in scopes or AI_SCOPE in scopes):
+        return False
     return bool(
         config.rate_limit_admin_bypass
         and config.openai_status_notify_user_id is not None
@@ -144,6 +199,17 @@ async def _send_rate_limit_notice(
 
     if isinstance(event, CallbackQuery):
         await event.answer(format_message(key, language, html=False, retry_after=retry_after))
+        return
+    if isinstance(event, Message):
+        await event.answer(text)
+
+
+async def _send_search_in_progress_notice(event: TelegramObject) -> None:
+    language = language_from_message(event)
+    text = format_message("search_in_progress", language)
+
+    if isinstance(event, CallbackQuery):
+        await event.answer(format_message("search_in_progress", language, html=False))
         return
     if isinstance(event, Message):
         await event.answer(text)

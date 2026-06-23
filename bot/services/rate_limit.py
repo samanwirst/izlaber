@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from collections import deque
 from collections.abc import Callable
@@ -75,3 +76,24 @@ class SlidingWindowRateLimiter:
 
 
 rate_limiter = SlidingWindowRateLimiter()
+
+
+class UserInFlightGate:
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._active: set[tuple[int, str]] = set()
+
+    async def acquire(self, *, user_id: int, scope: str) -> bool:
+        key = (user_id, scope)
+        async with self._lock:
+            if key in self._active:
+                return False
+            self._active.add(key)
+            return True
+
+    async def release(self, *, user_id: int, scope: str) -> None:
+        async with self._lock:
+            self._active.discard((user_id, scope))
+
+
+search_inflight_gate = UserInFlightGate()

@@ -85,8 +85,10 @@ LOCALES: dict[str, LocaleCopy] = {
                 "Juda ko'p so'rov yubordingiz. Iltimos, {retry_after}dan keyin urinib ko'ring."
             ),
             "ai_rate_limited": (
-                "Foto va ovozli qidiruv limiti tugadi. {retry_after}dan keyin urinib "
-                "ko'ring yoki mahsulot nomini matn bilan yozing."
+                "Aqlli qidiruv limiti tugadi. {retry_after}dan keyin urinib ko'ring."
+            ),
+            "search_in_progress": (
+                "Oldingi qidiruv hali tugamadi. Iltimos, natijani kuting."
             ),
             "guest_need_query_title": "Nimani qidiramiz?",
             "guest_need_query_text": ("Bot nomi yoniga mahsulot yozing, masalan: @bot iphone 15."),
@@ -275,8 +277,11 @@ LOCALES: dict[str, LocaleCopy] = {
             "catalog_unavailable": "Каталог сейчас недоступен. Попробуйте позже.",
             "rate_limited": ("Слишком много запросов. Попробуйте снова через {retry_after}."),
             "ai_rate_limited": (
-                "Лимит поиска по фото и голосу исчерпан. Попробуйте через {retry_after} "
-                "или напишите название товара текстом."
+                "Лимит умного поиска исчерпан. Попробуйте снова через {retry_after}."
+            ),
+            "search_in_progress": (
+                "Предыдущий поиск еще выполняется. Дождитесь результата, "
+                "затем отправьте новый запрос."
             ),
             "guest_need_query_title": "Что искать?",
             "guest_need_query_text": (
@@ -469,8 +474,11 @@ LOCALES: dict[str, LocaleCopy] = {
             "catalog_unavailable": "The catalog is unavailable right now. Try again later.",
             "rate_limited": "Too many requests. Try again in {retry_after}.",
             "ai_rate_limited": (
-                "Photo and voice search limit reached. Try again in {retry_after} or type "
-                "the product name."
+                "Smart search limit reached. Try again in {retry_after}."
+            ),
+            "search_in_progress": (
+                "The previous search is still running. Wait for the result before sending "
+                "a new query."
             ),
             "guest_need_query_title": "What should I search?",
             "guest_need_query_text": (

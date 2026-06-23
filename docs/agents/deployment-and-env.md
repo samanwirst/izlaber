@@ -59,6 +59,16 @@ Analytics variables:
 | `ANALYTICS_COOKIE_NAME` | Cookie name, default `izlaber_cid`. |
 | `ANALYTICS_HASH_IP` | Stores salted IP hashes for redirect events when enabled. |
 
+Bot abuse-control variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `BOT_RATE_LIMIT_ENABLED` | Enables bot-side rate limiting middleware. Keep enabled in production. |
+| `BOT_RATE_LIMIT_MAX_EVENTS` | Sliding-window cap for all user interactions. |
+| `BOT_SEARCH_RATE_LIMIT_MAX_EVENTS` | Sliding-window cap for text/photo/voice/More search inputs. |
+| `BOT_AI_RATE_LIMIT_MAX_EVENTS` | Sliding-window cap for inputs that can spend AI tokens, including text search when AI fallback is enabled. |
+| `BOT_SEARCH_INFLIGHT_LIMIT_ENABLED` | Allows only one active search/photo/voice/More job per user at a time. Keep enabled in production. |
+
 ## Docker Compose
 
 Services:

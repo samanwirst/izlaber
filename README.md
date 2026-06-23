@@ -76,8 +76,11 @@ Bot search flow:
 - Any new product text resets that user's search offset, so old searches are not mixed.
 - Bot-side rate limiting is enabled by default. `BOT_RATE_LIMIT_MAX_EVENTS` caps all
   interactions, `BOT_SEARCH_RATE_LIMIT_MAX_EVENTS` caps text/photo/voice/More searches,
-  and `BOT_AI_RATE_LIMIT_MAX_EVENTS` caps photo/voice requests that can spend AI tokens.
-  `OPENAI_STATUS_NOTIFY_USER_ID` bypasses these limits by default for admin checks.
+  and `BOT_AI_RATE_LIMIT_MAX_EVENTS` caps requests that can spend AI tokens. Text searches
+  with AI fallback enabled count toward the AI limit too. `BOT_SEARCH_INFLIGHT_LIMIT_ENABLED`
+  allows only one active search/photo/voice/More job per user at a time, so rapid Telegram
+  spam cannot start many expensive handlers in parallel. `OPENAI_STATUS_NOTIFY_USER_ID`
+  bypasses only non-search/non-AI limits by default for admin checks.
 
 Analytics:
 

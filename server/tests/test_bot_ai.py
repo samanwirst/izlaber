@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import replace
 from datetime import datetime
 from uuid import UUID
@@ -22,8 +23,18 @@ from bot.handlers.common import (
     _voice_search_available,
 )
 from bot.keyboards.main_menu import more_results_keyboard
+from bot.middlewares import rate_limit as rate_limit_middleware
 from bot.middlewares.consent import _is_consent_event
-from bot.middlewares.rate_limit import AI_SCOPE, SEARCH_SCOPE, _event_scopes, _format_retry_after
+from bot.middlewares.rate_limit import (
+    AI_SCOPE,
+    GENERAL_SCOPE,
+    SEARCH_SCOPE,
+    RateLimitMiddleware,
+    _admin_bypasses_limit,
+    _event_rules,
+    _event_scopes,
+    _format_retry_after,
+)
 from bot.services.ai_audio import _language_name, _transcription_prompt
 from bot.services.ai_reranker import (
     OPENAI_PROBE_MAX_OUTPUT_TOKENS,
@@ -43,7 +54,7 @@ from bot.services.api_client import (
 )
 from bot.services.consent_store import UserConsentStore
 from bot.services.openai_billing import OpenAICostSummary, _merge_cost_buckets
-from bot.services.rate_limit import RateLimitRule, SlidingWindowRateLimiter
+from bot.services.rate_limit import RateLimitRule, SlidingWindowRateLimiter, UserInFlightGate
 from bot.services.search_state import SearchStateStore
 
 
@@ -302,6 +313,86 @@ def test_rate_limit_event_scopes_target_search_and_ai_inputs():
     assert SEARCH_SCOPE not in _event_scopes(consent_accept_message)
     assert {SEARCH_SCOPE, AI_SCOPE}.issubset(_event_scopes(photo_message))
     assert {SEARCH_SCOPE, AI_SCOPE}.issubset(_event_scopes(voice_message))
+
+
+def test_rate_limit_text_search_with_ai_uses_ai_scope():
+    config = Config(bot=BotConfig(token="test"))
+    text_message = Message(
+        message_id=1,
+        date=datetime.now(),
+        chat=Chat(id=1, type="private"),
+        text="iphone",
+    )
+    more_message = Message(
+        message_id=2,
+        date=datetime.now(),
+        chat=Chat(id=1, type="private"),
+        text="ещё",
+    )
+
+    text_scopes = {rule.scope for rule in _event_rules(text_message, config)}
+    more_scopes = {rule.scope for rule in _event_rules(more_message, config)}
+
+    assert {GENERAL_SCOPE, SEARCH_SCOPE, AI_SCOPE}.issubset(text_scopes)
+    assert SEARCH_SCOPE in more_scopes
+    assert AI_SCOPE not in more_scopes
+
+
+def test_admin_bypass_does_not_apply_to_search_or_ai_scopes():
+    config = Config(bot=BotConfig(token="test"), openai_status_notify_user_id=976835256)
+
+    assert _admin_bypasses_limit(976835256, config, scopes={GENERAL_SCOPE}) is True
+    assert _admin_bypasses_limit(976835256, config, scopes={SEARCH_SCOPE}) is False
+    assert _admin_bypasses_limit(976835256, config, scopes={AI_SCOPE}) is False
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_blocks_parallel_search_for_same_user(monkeypatch):
+    monkeypatch.setattr(rate_limit_middleware, "rate_limiter", SlidingWindowRateLimiter())
+    monkeypatch.setattr(rate_limit_middleware, "search_inflight_gate", UserInFlightGate())
+    notices: list[int] = []
+
+    async def fake_notice(event: Message) -> None:
+        notices.append(event.message_id)
+
+    monkeypatch.setattr(rate_limit_middleware, "_send_search_in_progress_notice", fake_notice)
+
+    middleware = RateLimitMiddleware()
+    config = Config(bot=BotConfig(token="test"))
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    handler_calls = 0
+
+    async def handler(event: Message, data: dict[str, object]) -> str:
+        nonlocal handler_calls
+        handler_calls += 1
+        first_started.set()
+        await release_first.wait()
+        return "ok"
+
+    first_message = Message(
+        message_id=1,
+        date=datetime.now(),
+        chat=Chat(id=10, type="private"),
+        text="iphone",
+    )
+    second_message = Message(
+        message_id=2,
+        date=datetime.now(),
+        chat=Chat(id=10, type="private"),
+        text="noutbuk",
+    )
+
+    first_task = asyncio.create_task(middleware(handler, first_message, {"config": config}))
+    await first_started.wait()
+
+    blocked = await middleware(handler, second_message, {"config": config})
+    release_first.set()
+
+    assert blocked is None
+    assert await first_task == "ok"
+    assert handler_calls == 1
+    assert notices == [2]
 
 
 def test_sliding_window_rate_limiter_rolls_back_partial_many_checks():

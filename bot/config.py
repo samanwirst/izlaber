@@ -66,6 +66,7 @@ class Config:
     rate_limit_admin_bypass: bool = True
     rate_limit_max_events: int = 30
     rate_limit_window_seconds: float = 60.0
+    search_inflight_limit_enabled: bool = True
     search_rate_limit_max_events: int = 12
     search_rate_limit_window_seconds: float = 60.0
     ai_rate_limit_max_events: int = 12
@@ -181,6 +182,11 @@ def load_config() -> Config:
             1.0,
             float(getenv("BOT_RATE_LIMIT_WINDOW_SECONDS", "60")),
         ),
+        search_inflight_limit_enabled=getenv(
+            "BOT_SEARCH_INFLIGHT_LIMIT_ENABLED",
+            "true",
+        ).lower()
+        in {"1", "true", "yes"},
         search_rate_limit_max_events=max(
             1,
             int(getenv("BOT_SEARCH_RATE_LIMIT_MAX_EVENTS", "12")),
