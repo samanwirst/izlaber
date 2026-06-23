@@ -228,6 +228,7 @@ async def search_more(message: Message, config: Config) -> None:
             status_message,
             format_message("catalog_unavailable", language),
             language=language,
+            reply_markup=main_menu_keyboard(language),
         )
         return
     if not products:
@@ -236,6 +237,7 @@ async def search_more(message: Message, config: Config) -> None:
             status_message,
             format_message("no_more", language, query=session.query),
             language=language,
+            reply_markup=main_menu_keyboard(language),
         )
         return
 
@@ -251,6 +253,7 @@ async def search_more(message: Message, config: Config) -> None:
         status_message,
         format_message("found_intro", language, query=session.query, count=len(products)),
         language=language,
+        reply_markup=more_results_keyboard(language),
     )
     await _send_products(
         message,
@@ -320,6 +323,7 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
                     status_message,
                     format_message("photo_no_results", language, query=photo_query.query),
                     language=language,
+                    reply_markup=main_menu_keyboard(language),
                 )
                 return
 
@@ -341,6 +345,7 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
                     count=len(products),
                 ),
                 language=language,
+                reply_markup=more_results_keyboard(language),
             )
             await _send_products(
                 message,
@@ -357,6 +362,7 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
                 status_message,
                 format_message("photo_ai_unavailable", language),
                 language=language,
+                reply_markup=main_menu_keyboard(language),
             )
             return
 
@@ -381,6 +387,7 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
             status_message,
             format_message("photo_visual_found_intro", language, count=len(products)),
             language=language,
+            reply_markup=more_results_keyboard(language),
         )
         await _send_products(
             message,
@@ -397,6 +404,7 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
         status_message,
         format_message("photo_visual_no_results", language),
         language=language,
+        reply_markup=main_menu_keyboard(language),
     )
 
 
@@ -449,6 +457,7 @@ async def search_uzum_by_voice(message: Message, config: Config) -> None:
             status_message,
             format_message("voice_download_failed", language),
             language=language,
+            reply_markup=main_menu_keyboard(language),
         )
         return
     if len(audio_bytes) > config.openai_voice_max_download_bytes:
@@ -456,6 +465,7 @@ async def search_uzum_by_voice(message: Message, config: Config) -> None:
             status_message,
             format_message("voice_too_large", language),
             language=language,
+            reply_markup=main_menu_keyboard(language),
         )
         return
 
@@ -476,6 +486,7 @@ async def search_uzum_by_voice(message: Message, config: Config) -> None:
             status_message,
             format_message(message_key, language),
             language=language,
+            reply_markup=main_menu_keyboard(language),
         )
         return
 
@@ -633,6 +644,7 @@ async def _run_text_search(
                 status_message,
                 format_message(empty_key, language),
                 language=language,
+                reply_markup=main_menu_keyboard(language),
             )
         else:
             await message.answer(
@@ -674,6 +686,7 @@ async def _run_text_search(
                 status_message,
                 format_message(no_results_key, language, query=query),
                 language=language,
+                reply_markup=main_menu_keyboard(language),
             )
         else:
             await message.answer(
@@ -696,6 +709,7 @@ async def _run_text_search(
             status_message,
             format_message(intro_key, language, query=query, count=len(products)),
             language=language,
+            reply_markup=more_results_keyboard(language),
         )
     else:
         await message.answer(
@@ -931,7 +945,20 @@ async def _replace_status_message(
     text: str,
     *,
     language: str,
+    reply_markup: object | None = None,
 ) -> None:
+    if reply_markup is not None:
+        try:
+            await message.delete()
+        except TelegramBadRequest:
+            pass
+        await message.answer(
+            text,
+            reply_markup=reply_markup,
+            disable_web_page_preview=True,
+        )
+        return
+
     try:
         await message.edit_text(
             text,

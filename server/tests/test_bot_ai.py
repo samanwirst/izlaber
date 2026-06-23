@@ -14,12 +14,14 @@ from bot.handlers.common import (
     _merge_unique_products,
     _photo_candidate_query_limit,
     _photo_search_queries,
+    _replace_status_message,
     _search_expansion_allowed,
     _select_photo_for_vision,
     _source_product_ids_from_text,
     _strip_bot_username,
     _voice_search_available,
 )
+from bot.keyboards.main_menu import more_results_keyboard
 from bot.middlewares.consent import _is_consent_event
 from bot.middlewares.rate_limit import AI_SCOPE, SEARCH_SCOPE, _event_scopes, _format_retry_after
 from bot.services.ai_audio import _language_name, _transcription_prompt
@@ -203,6 +205,38 @@ def test_consent_middleware_only_allows_exact_consent_command():
     assert _is_consent_event(targeted_consent_message) is True
     assert _is_consent_event(accept_button_message) is True
     assert _is_consent_event(bypass_attempt) is False
+
+
+@pytest.mark.asyncio
+async def test_replace_status_message_sends_new_message_for_reply_keyboard():
+    class FakeMessage:
+        def __init__(self) -> None:
+            self.deleted = False
+            self.edited: list[tuple[str, bool]] = []
+            self.answered: list[tuple[str, object | None, bool]] = []
+
+        async def delete(self) -> None:
+            self.deleted = True
+
+        async def edit_text(self, text, disable_web_page_preview=True):
+            self.edited.append((text, disable_web_page_preview))
+
+        async def answer(self, text, reply_markup=None, disable_web_page_preview=True):
+            self.answered.append((text, reply_markup, disable_web_page_preview))
+
+    message = FakeMessage()
+    keyboard = more_results_keyboard("ru")
+
+    await _replace_status_message(
+        message,
+        "Найдено 10 товаров.",
+        language="ru",
+        reply_markup=keyboard,
+    )
+
+    assert message.deleted is True
+    assert message.edited == []
+    assert message.answered == [("Найдено 10 товаров.", keyboard, True)]
 
 
 def test_rate_limit_event_scopes_target_search_and_ai_inputs():
