@@ -176,6 +176,9 @@ PHOTO_OBJECT_QUERY_ALIASES = {
     "шоколадка": ("шоколад", "shokolad", "chocolate"),
     "шоколадный": ("шоколад", "shokolad", "chocolate"),
 }
+PHOTO_BRAND_TOKEN_ALIASES = {
+    "snickers": {"сникерс"},
+}
 PRICE_STOP_TOKENS = {
     "до",
     "дешевле",
@@ -1245,6 +1248,27 @@ async def _load_photo_ranked_candidates(
     products = products[: max(config.product_search_limit, config.openai_photo_candidate_limit)]
     if not products:
         return used_query, [], "none"
+    exact_products = _photo_exact_candidate_products(photo_query=photo_query, products=products)
+    if _photo_brand_tokens(photo_query.brand) and not exact_products:
+        try:
+            async with ServerAPIClient(
+                config.server_api_base_url,
+                config.bot_api_key,
+                timeout=config.server_api_timeout,
+            ) as client:
+                substitute_query, substitute_products = await _load_photo_substitute_products(
+                    client=client,
+                    photo_query=photo_query,
+                    config=config,
+                )
+        except ServerAPIError as error:
+            logger.warning("Photo substitute search failed for %r: %s", photo_query.query, error)
+            substitute_query, substitute_products = used_query, []
+        if substitute_products:
+            return substitute_query, substitute_products, "substitute"
+        return used_query, [], "none"
+    if exact_products:
+        products = exact_products
 
     ranked_products = await rerank_photo_products_by_image(
         image_bytes=image_bytes,
@@ -1261,6 +1285,11 @@ async def _load_photo_ranked_candidates(
             reply_markup=main_menu_keyboard(language),
         )
         return used_query, None, "none"
+    if ranked_products:
+        ranked_products = _photo_exact_candidate_products(
+            photo_query=photo_query,
+            products=ranked_products,
+        )
     if ranked_products:
         return used_query, ranked_products, "ai"
     safe_text_fallback = _photo_text_fallback_products(
@@ -1443,7 +1472,45 @@ def _photo_text_fallback_products(
 
 
 def _photo_brand_tokens(brand: str) -> set[str]:
-    return {token for token in _query_tokens(brand) if len(token) >= 3}
+    tokens = {token for token in _query_tokens(brand) if len(token) >= 3}
+    expanded = set(tokens)
+    for token in tokens:
+        expanded.update(PHOTO_BRAND_TOKEN_ALIASES.get(token, set()))
+    return expanded
+
+
+def _photo_exact_candidate_products(
+    *,
+    photo_query: PhotoSearchQuery,
+    products: list[ProductDTO],
+) -> list[ProductDTO]:
+    brand_tokens = _photo_brand_tokens(photo_query.brand)
+    if not brand_tokens:
+        return products
+
+    object_tokens = set(_query_tokens(photo_query.object_type))
+    allowed_object_tokens = object_tokens & PHOTO_TEXT_FALLBACK_OBJECT_TOKENS
+    filtered = []
+    for product in products:
+        product_tokens = _product_tokens(product)
+        if not brand_tokens & product_tokens:
+            continue
+        if allowed_object_tokens and not allowed_object_tokens & product_tokens:
+            continue
+        filtered.append(product)
+    return filtered
+
+
+def _product_tokens(product: ProductDTO) -> set[str]:
+    return set(
+        _query_tokens(
+            " ".join(
+                part
+                for part in (product.title, product.brand, product.category_path_text)
+                if part
+            )
+        )
+    )
 
 
 def _photo_candidate_query_limit(config: Config, query_count: int) -> int:

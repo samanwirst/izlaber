@@ -14,6 +14,7 @@ from bot.handlers.common import (
     _local_results_need_ai,
     _merge_unique_products,
     _photo_candidate_query_limit,
+    _photo_exact_candidate_products,
     _photo_result_intro_key,
     _photo_search_queries,
     _photo_substitute_queries,
@@ -591,6 +592,28 @@ def test_photo_text_fallback_requires_brand_when_brand_is_visible():
         products=[shoes, book, chocolate_bar, a4_bar],
         limit=10,
     ) == []
+
+
+def test_photo_exact_candidates_require_visible_brand_and_safe_object_type():
+    photo_query = PhotoSearchQuery(
+        query="Snickers батончик шоколадный",
+        alternative_queries=[],
+        confidence="high",
+        visible_product="Snickers chocolate bar",
+        object_type="батончик",
+        brand="Snickers",
+        visible_text="Snickers",
+        key_features=["шоколад"],
+    )
+    exact_latin = product(1, "Батончик Snickers, 50 г")
+    exact_cyrillic = product(2, "Шоколадный батончик Сникерс, 50 г")
+    wrong_brand = product(3, "А4 Шоколадный батончик, 40 г")
+    wrong_type = product(4, "Кроссовки мужские сникерсы")
+
+    assert _photo_exact_candidate_products(
+        photo_query=photo_query,
+        products=[wrong_brand, wrong_type, exact_latin, exact_cyrillic],
+    ) == [exact_latin, exact_cyrillic]
 
 
 def test_photo_substitute_queries_drop_brand_but_keep_safe_object_type():
