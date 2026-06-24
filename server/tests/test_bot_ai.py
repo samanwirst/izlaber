@@ -19,6 +19,7 @@ from bot.handlers.common import (
     _photo_search_queries,
     _photo_substitute_queries,
     _photo_text_fallback_products,
+    _query_requirements,
     _replace_status_message,
     _search_expansion_allowed,
     _select_photo_for_vision,
@@ -68,6 +69,9 @@ def product(product_id: int, title: str) -> ProductDTO:
         title=title,
         canonical_url=f"https://uzum.uz/ru/product/test-{product_id}",
         cover_image_url=None,
+        marketplace_code="uzum",
+        marketplace_name="Uzum Market",
+        marketplace_base_url="https://uzum.uz",
         brand=None,
         current_price=None,
         old_price=None,
@@ -527,11 +531,39 @@ def test_photo_search_queries_include_visible_text_and_brand():
 
     assert _photo_search_queries(parsed) == [
         "CeraVe крем",
+        "CeraVe",
         "cerave увлажняющий крем",
         "церава крем",
         "moisturizing cream",
         "CeraVe Moisturising Cream крем",
     ]
+
+
+def test_bot_query_requirements_normalize_generic_phone_case_intent():
+    assert _query_requirements("чехол на телефон") == [{"чехол"}]
+    assert _query_requirements("чехол для смартфона") == [{"чехол"}]
+    assert _query_requirements("стикеры на чехол телефона") == [
+        {"стикеры"},
+        {"чехол"},
+        {"телефона"},
+    ]
+
+
+@pytest.mark.parametrize(
+    ("query", "requirements"),
+    [
+        ("стекло на телефон", [{"стекло"}]),
+        ("пленка для смартфона", [{"пленка"}]),
+        ("зарядка для телефона", [{"зарядка"}]),
+        ("кабель для телефона", [{"кабель"}]),
+        ("держатель для телефона", [{"держатель"}]),
+    ],
+)
+def test_bot_query_requirements_normalize_generic_phone_accessory_intents(
+    query,
+    requirements,
+):
+    assert _query_requirements(query) == requirements
 
 
 def test_photo_search_queries_prioritize_latin_brand_and_object_type():
@@ -577,11 +609,12 @@ def test_photo_search_normalizes_snickers_snack_misclassification():
 
     assert queries[:5] == [
         "Snickers батончик",
+        "Snickers",
         "Snickers шоколадный батончик",
         "Snickers chocolate bar",
         "Snickers snack bar",
-        "сникерс батончик",
     ]
+    assert "сникерс батончик" in queries
     assert all("чипс" not in query.casefold() for query in queries)
     assert all("snek" not in query.casefold() for query in queries)
 

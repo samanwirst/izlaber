@@ -21,6 +21,9 @@ Do not expose these endpoints without internal auth.
 - Product list responses intentionally use `ProductCardSerializer` and a reduced queryset.
 - Preserve pagination caps in views. Current product list/visual limits are capped at 100.
 - Keep search candidate sets bounded before AI reranking.
+- Keep catalog intent rules and tests together. When changing `apps.catalog.search`, update
+  the query intent matrix in `server/tests/test_ingestion.py` so accessory-vs-target cases
+  such as phone cases, protective glass, straps, filters, and stickers stay covered.
 - Rebuild indexes after large imports or search-field changes.
 
 ## Model Changes
@@ -44,4 +47,3 @@ When changing models:
 - DRF validation errors should come from serializers where practical.
 - Operational failures should be logged without secrets or raw token values.
 - Avoid broad exception swallowing unless there is a tested fallback path.
-

@@ -21,9 +21,14 @@ MAX_QUERY_TOKENS = 6
 MAX_TOKEN_LENGTH = 64
 TITLE_WEIGHT = 10
 BRAND_WEIGHT = 8
+DESCRIPTION_WEIGHT = 4
 CATEGORY_WEIGHT = 3
 SOURCE_ID_WEIGHT = 1
 QUERY_SYNONYMS = {
+    "айфона": {"айфон", "айфона", "iphone"},
+    "айфоне": {"айфон", "айфоне", "iphone"},
+    "айфонов": {"айфон", "айфонов", "iphone"},
+    "айфону": {"айфон", "айфону", "iphone"},
     "айфон": {"айфон", "iphone"},
     "iphone": {"iphone", "айфон"},
     "snickers": {"snickers", "сникерс"},
@@ -97,6 +102,114 @@ COMPRESSION_WEAR_TOKENS = {
 PHONE_TOKENS = {
     "iphone",
     "айфон",
+    "айфона",
+    "айфоне",
+    "айфонов",
+    "айфону",
+    "редми",
+    "самсунг",
+    "сяоми",
+    "redmi",
+    "samsung",
+    "xiaomi",
+}
+GENERIC_PHONE_TOKENS = {
+    "мобильный",
+    "смартфон",
+    "смартфона",
+    "смартфоне",
+    "смартфонов",
+    "смартфоны",
+    "телефон",
+    "телефона",
+    "телефоне",
+    "телефонов",
+    "телефоны",
+}
+PHONE_CASE_TOKENS = {
+    "case",
+    "cover",
+    "чехол",
+    "чехла",
+    "чехле",
+    "чехлом",
+    "чехлы",
+}
+PHONE_GLASS_TOKENS = {
+    "glass",
+    "стекла",
+    "стекле",
+    "стекло",
+    "стеклом",
+}
+PHONE_FILM_TOKENS = {
+    "film",
+    "пленка",
+    "пленки",
+    "пленкой",
+    "пленку",
+    "плёнка",
+    "плёнки",
+    "плёнкой",
+    "плёнку",
+}
+PHONE_CHARGER_TOKENS = {
+    "adapter",
+    "charger",
+    "адаптер",
+    "адаптера",
+    "блок",
+    "зарядка",
+    "зарядки",
+    "зарядку",
+    "зарядная",
+    "зарядное",
+    "зарядной",
+    "зарядный",
+}
+PHONE_CABLE_TOKENS = {
+    "cable",
+    "lightning",
+    "type",
+    "usb",
+    "кабелем",
+    "кабель",
+    "кабеля",
+    "провод",
+    "провода",
+    "шнур",
+    "шнура",
+}
+PHONE_HOLDER_TOKENS = {
+    "holder",
+    "stand",
+    "держателе",
+    "держатель",
+    "держателя",
+    "крепление",
+    "крепления",
+    "подставка",
+    "подставки",
+}
+PHONE_ACCESSORY_QUERY_TOKENS = (
+    PHONE_CASE_TOKENS
+    | PHONE_GLASS_TOKENS
+    | PHONE_FILM_TOKENS
+    | PHONE_CHARGER_TOKENS
+    | PHONE_CABLE_TOKENS
+    | PHONE_HOLDER_TOKENS
+)
+STICKER_INTENT_TOKENS = {
+    "label",
+    "sticker",
+    "stickers",
+    "этикетка",
+    "этикетки",
+    "наклейка",
+    "наклейки",
+    "стикер",
+    "стикерами",
+    "стикеры",
 }
 PHONE_ACCESSORY_TOKENS = {
     "адаптер",
@@ -108,6 +221,132 @@ PHONE_ACCESSORY_TOKENS = {
     "стекло",
     "чехол",
     "чехлы",
+}
+LAPTOP_TARGET_TOKENS = {
+    "laptop",
+    "noutbuk",
+    "ноутбук",
+    "ноутбука",
+    "ноутбуке",
+    "ноутбуков",
+    "ноутбуки",
+}
+LAPTOP_ACCESSORY_TOKENS = PHONE_CASE_TOKENS | {
+    "bag",
+    "sleeve",
+    "сумка",
+    "сумки",
+}
+WATCH_TARGET_TOKENS = {
+    "applewatch",
+    "watch",
+    "часам",
+    "часах",
+    "часов",
+    "часы",
+}
+WATCH_STRAP_TOKENS = {
+    "band",
+    "strap",
+    "браслет",
+    "браслета",
+    "ремешка",
+    "ремешки",
+    "ремешок",
+    "ремешком",
+}
+VACUUM_TARGET_TOKENS = {
+    "vacuum",
+    "пылесос",
+    "пылесоса",
+    "пылесосов",
+    "пылесосы",
+}
+VACUUM_CONSUMABLE_TOKENS = {
+    "filter",
+    "nozzle",
+    "brush",
+    "мешки",
+    "мешок",
+    "насадка",
+    "насадки",
+    "фильтр",
+    "фильтра",
+    "фильтры",
+    "щетка",
+    "щетки",
+    "щётка",
+    "щётки",
+}
+KEYBOARD_TARGET_TOKENS = {
+    "keyboard",
+    "клавиатура",
+    "клавиатуре",
+    "клавиатуру",
+    "клавиатуры",
+}
+PASSPORT_TARGET_TOKENS = {
+    "passport",
+    "паспорт",
+    "паспорта",
+    "паспорте",
+}
+PASSPORT_COVER_TOKENS = PHONE_CASE_TOKENS | {
+    "обложка",
+    "обложки",
+    "обложкой",
+    "обложку",
+}
+ACCESSORY_TARGET_INTENT_RULES = (
+    (
+        LAPTOP_ACCESSORY_TOKENS,
+        LAPTOP_TARGET_TOKENS,
+        ("чехол", "чехлы", "сумк", "case", "cover", "sleeve"),
+        ("аксессуары для ноутбуков", "сумки для ноутбуков", "чехл", "сумк"),
+        ("ноутбук", "laptop", "noutbuk"),
+        ("ноутбук", "laptop", "noutbuk"),
+    ),
+    (
+        WATCH_STRAP_TOKENS,
+        WATCH_TARGET_TOKENS,
+        ("ремеш", "браслет", "strap", "band"),
+        ("ремеш", "браслет", "аксессуары для часов"),
+        ("часы", "смарт-часы", "smart watch"),
+        ("час", "watch"),
+    ),
+    (
+        VACUUM_CONSUMABLE_TOKENS,
+        VACUUM_TARGET_TOKENS,
+        ("фильтр", "мешок", "насад", "щетк", "щётк", "filter", "nozzle", "brush"),
+        ("аксессуары для пылесосов", "фильтр", "мешки", "насад"),
+        ("пылесос", "vacuum"),
+        ("пылесос", "vacuum"),
+    ),
+    (
+        STICKER_INTENT_TOKENS,
+        KEYBOARD_TARGET_TOKENS,
+        ("стикер", "наклей", "этикет", "sticker", "label"),
+        ("стикер", "наклей", "этикет"),
+        ("клавиатур", "keyboard"),
+        ("клавиатур", "keyboard"),
+    ),
+    (
+        PASSPORT_COVER_TOKENS,
+        PASSPORT_TARGET_TOKENS,
+        ("облож", "чехол", "case", "cover"),
+        ("облож", "чехл", "документ"),
+        ("паспорт", "passport"),
+        ("паспорт", "passport"),
+    ),
+)
+QUERY_STOP_TOKENS = {
+    "ва",
+    "ваш",
+    "для",
+    "или",
+    "на",
+    "под",
+    "при",
 }
 COMMON_LATIN_DESCRIPTOR_TOKENS = {
     "bar",
@@ -160,6 +399,7 @@ MAX_POSTGRES_CANDIDATES = 1000
 def product_search_terms(
     *,
     title: str | None,
+    description: str | None = None,
     brand: str | None,
     category_path_text: str | None,
     source_product_id: str | None,
@@ -167,10 +407,12 @@ def product_search_terms(
     terms: dict[str, int] = {}
     _merge_terms(terms, tokenize(title), TITLE_WEIGHT)
     _merge_terms(terms, tokenize(brand), BRAND_WEIGHT)
+    _merge_terms(terms, tokenize(description), DESCRIPTION_WEIGHT)
     _merge_terms(terms, tokenize(category_path_text), CATEGORY_WEIGHT)
     _merge_terms(terms, tokenize(source_product_id), SOURCE_ID_WEIGHT)
     _merge_terms(terms, semantic_terms(title), TITLE_WEIGHT)
     _merge_terms(terms, semantic_terms(brand), BRAND_WEIGHT)
+    _merge_terms(terms, semantic_terms(description), DESCRIPTION_WEIGHT)
     _merge_terms(terms, semantic_terms(category_path_text), CATEGORY_WEIGHT)
     return terms
 
@@ -178,22 +420,26 @@ def product_search_terms(
 def product_search_text(
     *,
     title: str | None,
+    description: str | None = None,
     brand: str | None,
     category_path_text: str | None,
     source_product_id: str | None,
 ) -> str:
     title_text = " ".join([title or ""] * 3)
     brand_text = " ".join([brand or ""] * 2)
+    description_text = description or ""
     semantic_text = " ".join(
         [
             *semantic_terms(title),
             *semantic_terms(brand),
+            *semantic_terms(description),
             *semantic_terms(category_path_text),
         ]
     )
     parts = [
         title_text,
         brand_text,
+        description_text,
         category_path_text or "",
         str(source_product_id or ""),
         semantic_text,
@@ -207,6 +453,7 @@ def replace_product_search_terms(product) -> None:
 
     terms = product_search_terms(
         title=product.title,
+        description=product.description,
         brand=product.brand,
         category_path_text=product.category_path_text,
         source_product_id=product.source_product_id,
@@ -359,7 +606,7 @@ def _filter_queryset_by_required_groups(queryset, required_term_groups: list[set
 def query_terms(query: str) -> list[str]:
     tokens = tokenize(query)
     semantic = query_semantic_terms(query, tokens)
-    skip_tokens = _query_skip_tokens(semantic)
+    skip_tokens = _query_skip_tokens(semantic, tokens)
     skip_tokens.update(_price_skip_tokens(tokens))
 
     expanded: list[str] = []
@@ -488,8 +735,9 @@ def _query_has_v_neck(query: str, tokens: set[str]) -> bool:
     return bool(tokens & {"v", "vneck"} and tokens & NECKLINE_TOKENS)
 
 
-def _query_skip_tokens(semantic: list[str]) -> set[str]:
-    skip_tokens: set[str] = set()
+def _query_skip_tokens(semantic: list[str], tokens: list[str] | None = None) -> set[str]:
+    skip_tokens: set[str] = set(QUERY_STOP_TOKENS)
+    token_set = set(tokens or [])
     if "sweater" in semantic:
         skip_tokens.update(SWEATER_TOKENS)
     if "compressionwear" in semantic:
@@ -499,7 +747,33 @@ def _query_skip_tokens(semantic: list[str]) -> set[str]:
         skip_tokens.update(V_NECK_HINT_TOKENS)
     elif "neckline" in semantic:
         skip_tokens.update(NECKLINE_TOKENS)
+    if _has_generic_phone_accessory_query_intent(token_set):
+        skip_tokens.update(GENERIC_PHONE_TOKENS)
     return skip_tokens
+
+
+def _has_phone_case_query_intent(tokens: set[str]) -> bool:
+    return bool(
+        tokens & PHONE_CASE_TOKENS
+        and tokens & GENERIC_PHONE_TOKENS
+        and not tokens & STICKER_INTENT_TOKENS
+    )
+
+
+def _has_generic_phone_accessory_query_intent(tokens: set[str]) -> bool:
+    return bool(
+        tokens & PHONE_ACCESSORY_QUERY_TOKENS
+        and tokens & GENERIC_PHONE_TOKENS
+        and not tokens & STICKER_INTENT_TOKENS
+    )
+
+
+def _has_phone_accessory_query_intent(tokens: set[str]) -> bool:
+    return bool(
+        tokens & PHONE_ACCESSORY_QUERY_TOKENS
+        and tokens & (GENERIC_PHONE_TOKENS | PHONE_TOKENS)
+        and not tokens & STICKER_INTENT_TOKENS
+    )
 
 
 def _has_compression_wear_term(tokens: set[str]) -> bool:
@@ -705,7 +979,19 @@ def _fetch_postgres_product_ids(
 
 
 def _tsquery(terms: list[str], *, operator: str) -> str:
-    return operator.join(f"{term}:*" for term in terms if term)
+    expressions: list[str] = []
+    seen: set[str] = set()
+    for term in terms:
+        if not term or term in seen:
+            continue
+        synonyms = sorted(QUERY_SYNONYMS.get(term, {term}))
+        if len(synonyms) > 1:
+            seen.update(synonyms)
+            expressions.append("(" + " | ".join(f"{synonym}:*" for synonym in synonyms) + ")")
+            continue
+        seen.add(term)
+        expressions.append(f"{term}:*")
+    return operator.join(expressions)
 
 
 def _token_regex(term: str) -> str:
@@ -715,6 +1001,45 @@ def _token_regex(term: str) -> str:
 
 def _postgres_intent_order_sql(query: str) -> str:
     tokens = set(tokenize(query))
+    if _has_phone_case_query_intent(tokens):
+        return """
+            CASE
+                WHEN p.title ILIKE '%%стикер%%'
+                  OR p.title ILIKE '%%наклей%%'
+                  OR p.title ILIKE '%%этикет%%'
+                  OR p.category_path_text ILIKE '%%стикер%%'
+                  OR p.category_path_text ILIKE '%%наклей%%'
+                  OR p.category_path_text ILIKE '%%этикет%%'
+                  OR p.category_path_text ILIKE '%%пленка%%'
+                  OR p.category_path_text ILIKE '%%плёнка%%'
+                THEN 5
+                WHEN p.category_path_text ILIKE '%%аксессуары для смартфонов%%'
+                THEN 0
+                WHEN p.title ILIKE '%%телефон%%'
+                  OR p.title ILIKE '%%смартфон%%'
+                  OR p.title ILIKE '%%iphone%%'
+                  OR p.title ILIKE '%%айфон%%'
+                  OR p.title ILIKE '%%samsung%%'
+                  OR p.title ILIKE '%%xiaomi%%'
+                  OR p.title ILIKE '%%redmi%%'
+                  OR p.title ILIKE '%%редми%%'
+                THEN 1
+                WHEN p.category_path_text ILIKE '%%планшет%%'
+                  OR p.category_path_text ILIKE '%%кабел%%'
+                  OR p.title ILIKE '%%ipad%%'
+                THEN 4
+                WHEN p.category_path_text ILIKE '%%чехл%%'
+                  OR p.title ILIKE '%%чехол%%'
+                  OR p.title ILIKE '%%чехлы%%'
+                THEN 2
+                ELSE 3
+            END ASC,
+        """
+    if _has_phone_accessory_query_intent(tokens):
+        return _postgres_phone_accessory_intent_order_sql(tokens)
+    accessory_rule_sql = _postgres_accessory_target_intent_order_sql(tokens)
+    if accessory_rule_sql:
+        return accessory_rule_sql
     if tokens & PHONE_TOKENS and not tokens & PHONE_ACCESSORY_TOKENS:
         return """
             CASE
@@ -732,6 +1057,157 @@ def _postgres_intent_order_sql(query: str) -> str:
             END ASC,
         """
     return ""
+
+
+def _postgres_phone_accessory_intent_order_sql(tokens: set[str]) -> str:
+    accessory_condition = _sql_ilike_any("p.title", _phone_accessory_title_patterns(tokens))
+    target_condition = _sql_ilike_any(
+        "p.title",
+        (
+            "телефон",
+            "смартфон",
+            "iphone",
+            "айфон",
+            "samsung",
+            "самсунг",
+            "xiaomi",
+            "сяоми",
+            "redmi",
+            "редми",
+        ),
+    )
+    demote_condition = _sql_or(
+        _phone_accessory_false_positive_condition(tokens),
+        f"""
+        (
+            p.category_path_text ILIKE '%%смартфоны%%'
+            AND p.category_path_text NOT ILIKE '%%аксессуар%%'
+            AND NOT {accessory_condition}
+        )
+        """,
+    )
+    return f"""
+        CASE
+            WHEN {demote_condition}
+            THEN 5
+            WHEN p.category_path_text ILIKE '%%аксессуары для смартфонов%%'
+              AND {accessory_condition}
+            THEN 0
+            WHEN {accessory_condition}
+              AND {target_condition}
+            THEN 1
+            WHEN p.category_path_text ILIKE '%%аксессуары для смартфонов%%'
+            THEN 2
+            ELSE 3
+        END ASC,
+    """
+
+
+def _postgres_accessory_target_intent_order_sql(tokens: set[str]) -> str:
+    for (
+        product_tokens,
+        target_tokens,
+        product_title_patterns,
+        preferred_category_patterns,
+        target_category_patterns,
+        target_title_patterns,
+    ) in ACCESSORY_TARGET_INTENT_RULES:
+        if not (tokens & product_tokens and tokens & target_tokens):
+            continue
+        product_condition = _sql_ilike_any("p.title", product_title_patterns)
+        preferred_category_condition = _sql_ilike_any(
+            "p.category_path_text",
+            preferred_category_patterns,
+        )
+        target_category_condition = _sql_ilike_any("p.category_path_text", target_category_patterns)
+        target_title_condition = _sql_ilike_any("p.title", target_title_patterns)
+        false_positive_condition = _accessory_target_false_positive_condition(tokens)
+        return f"""
+            CASE
+                WHEN {false_positive_condition}
+                THEN 5
+                WHEN {preferred_category_condition}
+                  AND {product_condition}
+                THEN 0
+                WHEN {product_condition}
+                  AND {target_title_condition}
+                THEN 1
+                WHEN {target_category_condition}
+                  AND NOT {preferred_category_condition}
+                  AND NOT {product_condition}
+                THEN 5
+                WHEN {preferred_category_condition}
+                THEN 2
+                ELSE 3
+            END ASC,
+        """
+    return ""
+
+
+def _accessory_target_false_positive_condition(tokens: set[str]) -> str:
+    conditions: list[str] = []
+    if tokens & WATCH_STRAP_TOKENS and tokens & WATCH_TARGET_TOKENS:
+        conditions.append(_sql_ilike_any("p.title", ("шарм", "подвеск")))
+    return _sql_or(*conditions)
+
+
+def _phone_accessory_title_patterns(tokens: set[str]) -> tuple[str, ...]:
+    patterns: list[str] = []
+    if tokens & PHONE_CASE_TOKENS:
+        patterns.extend(("чехол", "чехлы", "case", "cover"))
+    if tokens & PHONE_GLASS_TOKENS:
+        patterns.extend(("стекл", "glass"))
+    if tokens & PHONE_FILM_TOKENS:
+        patterns.extend(("пленк", "плёнк", "film"))
+    if tokens & PHONE_CHARGER_TOKENS:
+        patterns.extend(("заряд", "адаптер", "блок", "charger", "adapter"))
+    if tokens & PHONE_CABLE_TOKENS:
+        patterns.extend(("кабел", "провод", "шнур", "usb", "type", "lightning", "cable"))
+    if tokens & PHONE_HOLDER_TOKENS:
+        patterns.extend(("держател", "подстав", "креплен", "holder", "stand"))
+    return tuple(dict.fromkeys(patterns))
+
+
+def _phone_accessory_false_positive_condition(tokens: set[str]) -> str:
+    conditions: list[str] = []
+    if tokens & PHONE_CASE_TOKENS:
+        conditions.append(
+            _sql_ilike_any(
+                "p.title",
+                ("стикер", "наклей", "этикет", "кабел", "заряд"),
+            )
+        )
+        conditions.append(
+            _sql_ilike_any(
+                "p.category_path_text",
+                ("стикер", "наклей", "этикет", "пленка самоклеящаяся", "плёнка самоклеящаяся"),
+            )
+        )
+    if tokens & PHONE_GLASS_TOKENS:
+        conditions.append(_sql_ilike_any("p.title", ("кружк", "стакан", "бокал", "посуда")))
+        conditions.append(_sql_ilike_any("p.category_path_text", ("посуда", "кружк", "бокал")))
+    if tokens & PHONE_FILM_TOKENS:
+        conditions.append(
+            _sql_ilike_any(
+                "p.category_path_text",
+                ("пленка самоклеящаяся", "плёнка самоклеящаяся", "наклей", "этикет"),
+            )
+        )
+    return _sql_or(*conditions)
+
+
+def _sql_ilike_any(field: str, fragments: Iterable[str]) -> str:
+    clauses = [f"{field} ILIKE '%%{fragment}%%'" for fragment in fragments if fragment]
+    if not clauses:
+        return "FALSE"
+    return "(" + " OR ".join(clauses) + ")"
+
+
+def _sql_or(*conditions: str) -> str:
+    clean_conditions = [condition.strip() for condition in conditions if condition.strip()]
+    if not clean_conditions:
+        return "FALSE"
+    return "(" + " OR ".join(clean_conditions) + ")"
 
 
 def _price_amount(amount: str, unit: str | None) -> Decimal | None:

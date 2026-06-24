@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from dataclasses import replace
@@ -114,6 +115,104 @@ COMPRESSION_WEAR_TOKENS = {
     "шорты",
     "штаны",
 }
+GENERIC_PHONE_TOKENS = {
+    "мобильный",
+    "смартфон",
+    "смартфона",
+    "смартфоне",
+    "смартфонов",
+    "смартфоны",
+    "телефон",
+    "телефона",
+    "телефоне",
+    "телефонов",
+    "телефоны",
+}
+PHONE_CASE_TOKENS = {
+    "case",
+    "cover",
+    "чехол",
+    "чехла",
+    "чехле",
+    "чехлом",
+    "чехлы",
+}
+PHONE_GLASS_TOKENS = {
+    "glass",
+    "стекла",
+    "стекле",
+    "стекло",
+    "стеклом",
+}
+PHONE_FILM_TOKENS = {
+    "film",
+    "пленка",
+    "пленки",
+    "пленкой",
+    "пленку",
+    "плёнка",
+    "плёнки",
+    "плёнкой",
+    "плёнку",
+}
+PHONE_CHARGER_TOKENS = {
+    "adapter",
+    "charger",
+    "адаптер",
+    "адаптера",
+    "блок",
+    "зарядка",
+    "зарядки",
+    "зарядку",
+    "зарядная",
+    "зарядное",
+    "зарядной",
+    "зарядный",
+}
+PHONE_CABLE_TOKENS = {
+    "cable",
+    "lightning",
+    "type",
+    "usb",
+    "кабелем",
+    "кабель",
+    "кабеля",
+    "провод",
+    "провода",
+    "шнур",
+    "шнура",
+}
+PHONE_HOLDER_TOKENS = {
+    "holder",
+    "stand",
+    "держателе",
+    "держатель",
+    "держателя",
+    "крепление",
+    "крепления",
+    "подставка",
+    "подставки",
+}
+PHONE_ACCESSORY_QUERY_TOKENS = (
+    PHONE_CASE_TOKENS
+    | PHONE_GLASS_TOKENS
+    | PHONE_FILM_TOKENS
+    | PHONE_CHARGER_TOKENS
+    | PHONE_CABLE_TOKENS
+    | PHONE_HOLDER_TOKENS
+)
+STICKER_INTENT_TOKENS = {
+    "label",
+    "sticker",
+    "stickers",
+    "этикетка",
+    "этикетки",
+    "наклейка",
+    "наклейки",
+    "стикер",
+    "стикерами",
+    "стикеры",
+}
 PHOTO_TEXT_FALLBACK_OBJECT_TOKENS = {
     "батончик",
     "батончики",
@@ -203,11 +302,15 @@ PRICE_STOP_TOKENS = {
 }
 QUERY_STOP_TOKENS = {
     "для",
+    "или",
     "купить",
+    "на",
     "найди",
     "нужен",
     "нужна",
     "нужно",
+    "под",
+    "при",
     "товар",
     "товары",
 }
@@ -795,6 +898,25 @@ async def _run_text_search(
             {product.id for product in sponsored_products},
         )
     if not ranked_products and not sponsored_products:
+        backfilled = await _request_search_backfill_and_wait(
+            queries=[query],
+            config=config,
+            message=message,
+            source=f"bot_{input_type}_search_miss",
+        )
+        if backfilled:
+            ranked_products = await _load_ranked_candidates(
+                query=query,
+                candidate_offset=0,
+                config=config,
+                message=message,
+                allow_ai_rerank=True,
+            )
+            if ranked_products is None:
+                return
+            candidate_offset = len(ranked_products)
+
+    if not ranked_products and not sponsored_products:
         search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
         await track_message_event(
             config=config,
@@ -965,6 +1087,8 @@ def _query_requirements(query: str) -> list[set[str]]:
     if _has_compression_term(token_set):
         requirements.append({REQUIREMENT_COMPRESSION_WEAR})
         skip_tokens.update(COMPRESSION_TOKENS)
+    if _has_generic_phone_accessory_query_intent(token_set):
+        skip_tokens.update(GENERIC_PHONE_TOKENS)
 
     for token in tokens:
         if token in skip_tokens or token.isdigit():
@@ -1024,6 +1148,22 @@ def _query_has_v_neck(query: str, tokens: set[str]) -> bool:
 
 def _has_compression_term(tokens: set[str]) -> bool:
     return any(token in COMPRESSION_TOKENS or token.startswith("компрессион") for token in tokens)
+
+
+def _has_phone_case_query_intent(tokens: set[str]) -> bool:
+    return bool(
+        tokens & PHONE_CASE_TOKENS
+        and tokens & GENERIC_PHONE_TOKENS
+        and not tokens & STICKER_INTENT_TOKENS
+    )
+
+
+def _has_generic_phone_accessory_query_intent(tokens: set[str]) -> bool:
+    return bool(
+        tokens & PHONE_ACCESSORY_QUERY_TOKENS
+        and tokens & GENERIC_PHONE_TOKENS
+        and not tokens & STICKER_INTENT_TOKENS
+    )
 
 
 def _price_skip_tokens(tokens: list[str]) -> set[str]:
@@ -1091,6 +1231,108 @@ async def _load_sponsored_products(
     except ServerAPIError as error:
         logger.warning("Sponsored product search failed for query %r: %s", query, error)
         return []
+
+
+async def _request_search_backfill_and_wait(
+    *,
+    queries: list[str],
+    config: Config,
+    message: Message,
+    source: str,
+    client: ServerAPIClient | None = None,
+) -> bool:
+    if not config.search_backfill_enabled or config.search_backfill_wait_seconds <= 0:
+        return False
+
+    normalized_queries = _unique_nonempty_queries(queries, limit=config.search_backfill_max_queries)
+    if not normalized_queries:
+        return False
+
+    async def request_with_client(active_client: ServerAPIClient) -> bool:
+        request_ids: list[int] = []
+        for query in normalized_queries:
+            try:
+                data = await active_client.create_search_backfill_request(
+                    query=query,
+                    source=source,
+                    telegram_user_id=_user_id(message),
+                    limit=config.search_backfill_limit,
+                )
+            except ServerAPIError as error:
+                logger.warning("Cannot create search backfill request for %r: %s", query, error)
+                continue
+            try:
+                request_id = int(data["id"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            request_ids.append(request_id)
+
+        if not request_ids:
+            return False
+
+        await track_message_event(
+            config=config,
+            message=message,
+            event_type="search_backfill_requested",
+            language_code=language_from_message(message),
+            input_type=source,
+            query=normalized_queries[0],
+            metadata={"queries": normalized_queries, "request_ids": request_ids},
+        )
+
+        deadline = asyncio.get_running_loop().time() + config.search_backfill_wait_seconds
+        pending_ids = set(request_ids)
+        completed = False
+        while pending_ids and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(config.search_backfill_poll_seconds)
+            for request_id in list(pending_ids):
+                try:
+                    data = await active_client.get_search_backfill_request(request_id)
+                except ServerAPIError as error:
+                    logger.warning(
+                        "Cannot poll search backfill request %s: %s",
+                        request_id,
+                        error,
+                    )
+                    pending_ids.discard(request_id)
+                    continue
+                status = str(data.get("status") or "")
+                if status in {"success", "partial"}:
+                    completed = True
+                    pending_ids.discard(request_id)
+                elif status == "failed":
+                    pending_ids.discard(request_id)
+
+        return completed or bool(request_ids)
+
+    if client is not None:
+        return await request_with_client(client)
+
+    try:
+        async with ServerAPIClient(
+            config.server_api_base_url,
+            config.bot_api_key,
+            timeout=config.server_api_timeout,
+        ) as owned_client:
+            return await request_with_client(owned_client)
+    except ServerAPIError as error:
+        logger.warning("Search backfill request failed for %r: %s", normalized_queries, error)
+        return False
+
+
+def _unique_nonempty_queries(queries: list[str], *, limit: int) -> list[str]:
+    cleaned_queries: list[str] = []
+    seen: set[str] = set()
+    for query in queries:
+        cleaned = " ".join(str(query or "").split())
+        key = cleaned.casefold()
+        if not cleaned or key in seen:
+            continue
+        cleaned_queries.append(cleaned)
+        seen.add(key)
+        if len(cleaned_queries) >= limit:
+            break
+    return cleaned_queries
 
 
 def _exclude_product_ids(products: list[ProductDTO], product_ids: set[int]) -> list[ProductDTO]:
@@ -1276,6 +1518,39 @@ async def _load_photo_ranked_candidates(
                 )
                 if len(products) >= config.openai_photo_candidate_limit:
                     break
+            exact_products = _photo_exact_candidate_products(
+                photo_query=photo_query,
+                products=products,
+            )
+            if (not products or (_photo_brand_tokens(photo_query.brand) and not exact_products)):
+                backfilled = await _request_search_backfill_and_wait(
+                    queries=queries,
+                    config=config,
+                    message=message,
+                    source="bot_photo_search_miss",
+                    client=client,
+                )
+                if backfilled:
+                    products = []
+                    for query in queries:
+                        query_products = await client.search_products(
+                            query=query,
+                            limit=query_limit,
+                            offset=0,
+                        )
+                        logger.info(
+                            "Photo candidate query=%r returned %s products after backfill.",
+                            query,
+                            len(query_products),
+                        )
+                        if query_products and not products:
+                            used_query = query
+                        products = _merge_unique_products(
+                            products,
+                            query_products,
+                        )
+                        if len(products) >= config.openai_photo_candidate_limit:
+                            break
             if not products:
                 if _photo_brand_tokens(photo_query.brand):
                     return used_query, [], "none"
@@ -1434,6 +1709,7 @@ async def _load_photo_substitute_products(
 def _photo_search_queries(photo_query: PhotoSearchQuery) -> list[str]:
     raw_queries = [
         _photo_core_query(photo_query),
+        photo_query.brand,
         *_photo_object_alias_queries(photo_query),
         photo_query.query,
         *photo_query.alternative_queries,
@@ -1690,6 +1966,8 @@ async def _send_products(
                 "item_id": product.id,
                 "item_name": product.title,
                 "source_product_id": product.source_product_id,
+                "marketplace_code": product.marketplace_code or "",
+                "marketplace_name": product.marketplace_name or "",
                 "is_sponsored": is_sponsored,
                 "sponsored_campaign_id": (
                     str(product.sponsored_campaign_id) if is_sponsored else ""

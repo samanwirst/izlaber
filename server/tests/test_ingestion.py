@@ -1,17 +1,26 @@
 import re
+import warnings
 
+import pytest
 from apps.catalog import search as catalog_search
 from apps.catalog.models import Product, ProductSearchTerm, ProductSnapshot
 from apps.catalog.search import (
     product_search_terms,
+    product_search_text,
     protected_query_term_groups,
     query_price_filters,
     query_terms,
     search_product_ids,
 )
-from apps.catalog.visual import hamming_distance_hex, visual_search_product_ids
+from apps.catalog.serializers import ProductCardSerializer
+from apps.catalog.visual import (
+    ImageFingerprintError,
+    hamming_distance_hex,
+    image_fingerprint,
+    visual_search_product_ids,
+)
 from apps.catalog.visual_index import VisualIndexStats
-from apps.crawling.models import CrawlRun
+from apps.crawling.models import CrawlRun, SearchBackfillRequest
 from apps.crawling.services import (
     finish_crawl_run,
     get_or_create_marketplace,
@@ -53,6 +62,55 @@ def test_product_upsert_idempotency(db):
     assert stats.unchanged == 1
     assert Product.objects.count() == 1
     assert ProductSnapshot.objects.count() == 0
+
+
+def test_get_or_create_marketplace_knows_wildberries(db):
+    marketplace = get_or_create_marketplace("wildberries")
+
+    assert marketplace.name == "Wildberries"
+    assert marketplace.base_url == "https://www.wildberries.uz"
+
+
+def test_product_card_serializer_includes_marketplace_source(db):
+    upsert_products(marketplace_code="wildberries", products=[product_payload()])
+    product = Product.objects.select_related("marketplace").get()
+
+    data = ProductCardSerializer(product).data
+
+    assert data["marketplace"]["code"] == "wildberries"
+    assert data["marketplace"]["name"] == "Wildberries"
+    assert data["marketplace"]["base_url"] == "https://www.wildberries.uz"
+
+
+def test_product_upsert_reuses_category_within_batch(db, monkeypatch):
+    calls = 0
+
+    def wrapped_upsert_category(marketplace, payload):
+        nonlocal calls
+        calls += 1
+        return original_upsert_category(marketplace, payload)
+
+    from apps.crawling import services
+
+    original_upsert_category = services._upsert_category
+    monkeypatch.setattr(services, "_upsert_category", wrapped_upsert_category)
+    products = [
+        {
+            **product_payload(source_product_id=f"p{index}", content_hash=f"hash-{index}"),
+            "category": {
+                "source_category_id": "369",
+                "name": "Батончики",
+                "path_text": "Батончики",
+                "url": "https://uzum.uz/ru/category/batonchiki-369",
+            },
+        }
+        for index in range(3)
+    ]
+
+    stats = upsert_products(marketplace_code="uzum", products=products)
+
+    assert stats.created == 3
+    assert calls == 1
 
 
 def test_product_upsert_updates_search_index(db):
@@ -99,6 +157,91 @@ def test_search_query_skips_price_noise_and_extracts_price_filter():
     assert query_terms("компрессионка") == ["compressionwear"]
 
 
+def test_search_query_normalizes_generic_phone_case_intent():
+    assert query_terms("чехол на телефон") == ["чехол"]
+    assert query_terms("чехол для смартфона") == ["чехол"]
+    assert query_terms("стикеры на чехол телефона") == ["стикеры", "чехол", "телефона"]
+
+    phone_case_order = catalog_search._postgres_intent_order_sql("чехол на телефон")
+    assert "стикер" in phone_case_order
+    assert "наклей" in phone_case_order
+    assert "аксессуары для смартфонов" in phone_case_order
+    assert "THEN 5" in phone_case_order
+
+    sticker_order = catalog_search._postgres_intent_order_sql("стикеры на чехол телефона")
+    assert sticker_order == ""
+
+
+def test_search_intent_order_demotes_watch_strap_charms():
+    order_sql = catalog_search._postgres_intent_order_sql("ремешок для часов")
+
+    assert "шарм" in order_sql
+    assert "подвеск" in order_sql
+
+
+@pytest.mark.parametrize(
+    ("query", "terms"),
+    [
+        ("стекло на телефон", ["стекло"]),
+        ("пленка для смартфона", ["пленка"]),
+        ("зарядка для телефона", ["зарядка"]),
+        ("кабель для телефона", ["кабель"]),
+        ("держатель для телефона", ["держатель"]),
+    ],
+)
+def test_search_query_normalizes_generic_phone_accessory_intents(query, terms):
+    assert query_terms(query) == terms
+
+    order_sql = catalog_search._postgres_intent_order_sql(query)
+
+    assert "аксессуары для смартфонов" in order_sql
+    assert "смартфоны" in order_sql
+    assert "THEN 0" in order_sql
+    assert "THEN 5" in order_sql
+
+
+@pytest.mark.parametrize(
+    ("query", "preferred_fragment", "demoted_fragment"),
+    [
+        ("чехол для ноутбука", "ноутбук", "THEN 5"),
+        ("ремешок для часов", "ремеш", "THEN 5"),
+        ("фильтр для пылесоса", "пылесос", "THEN 5"),
+        ("наклейки на клавиатуру", "клавиатур", "THEN 5"),
+        ("обложка на паспорт", "паспорт", "THEN 5"),
+    ],
+)
+def test_search_intent_order_handles_accessory_target_queries(
+    query,
+    preferred_fragment,
+    demoted_fragment,
+):
+    order_sql = catalog_search._postgres_intent_order_sql(query)
+
+    assert preferred_fragment in order_sql
+    assert demoted_fragment in order_sql
+    assert "THEN 0" in order_sql
+
+
+def test_search_index_includes_description_terms():
+    terms = product_search_terms(
+        title="Батончик Snickers, 50 г",
+        description="SNICKERS шоколадный батончик",
+        brand=None,
+        category_path_text=None,
+        source_product_id="42828",
+    )
+    search_text = product_search_text(
+        title="Батончик Snickers, 50 г",
+        description="SNICKERS шоколадный батончик",
+        brand=None,
+        category_path_text=None,
+        source_product_id="42828",
+    )
+
+    assert terms["шоколадный"] == catalog_search.DESCRIPTION_WEIGHT
+    assert "шоколадный батончик" in search_text
+
+
 def test_search_protects_latin_brand_in_mixed_query():
     assert protected_query_term_groups("Snickers") == [{"snickers", "сникерс"}]
     assert protected_query_term_groups("Snickers шоколадный батончик") == [
@@ -107,6 +250,9 @@ def test_search_protects_latin_brand_in_mixed_query():
     assert protected_query_term_groups("сникерс батончик") == [{"snickers", "сникерс"}]
     assert protected_query_term_groups("white sneakers") == []
     assert catalog_search._token_regex("сникерс")
+    assert catalog_search._tsquery(["snickers", "сникерс"], operator=" & ") == (
+        "(snickers:* | сникерс:*)"
+    )
 
 
 def test_search_does_not_relax_away_latin_brand(db):
@@ -305,6 +451,60 @@ def test_api_key_auth_rejects_missing_or_wrong_key(settings, db):
     assert response.status_code == 200
 
 
+def test_search_backfill_request_lifecycle(settings, db):
+    settings.BOT_API_KEY = "bot-key"
+    settings.PARSER_API_KEY = "parser-key"
+    client = APIClient()
+
+    response = client.post(
+        "/api/internal/search-backfill-requests/",
+        {"marketplace": "uzum", "query": "Snickers батончик", "source": "bot_photo_search_miss"},
+        format="json",
+        HTTP_X_INTERNAL_API_KEY="bot-key",
+    )
+
+    assert response.status_code == 202
+    request_id = response.data["id"]
+    assert response.data["status"] == SearchBackfillRequest.Status.PENDING
+    assert response.data["normalized_query"] == "snickers батончик"
+
+    duplicate = client.post(
+        "/api/internal/search-backfill-requests/",
+        {"marketplace": "uzum", "query": " snickers   батончик "},
+        format="json",
+        HTTP_X_INTERNAL_API_KEY="bot-key",
+    )
+
+    assert duplicate.status_code == 202
+    assert duplicate.data["id"] == request_id
+
+    claim = client.post(
+        "/api/internal/search-backfill-requests/claim/",
+        {"marketplace": "uzum", "worker_id": "test-worker"},
+        format="json",
+        HTTP_X_INTERNAL_API_KEY="parser-key",
+    )
+
+    assert claim.status_code == 200
+    assert claim.data["id"] == request_id
+    assert claim.data["status"] == SearchBackfillRequest.Status.RUNNING
+
+    finish = client.post(
+        f"/api/internal/search-backfill-requests/{request_id}/finish/",
+        {
+            "status": "success",
+            "stats": {"discovered": 30, "changed": 2, "created": 1, "updated": 1},
+        },
+        format="json",
+        HTTP_X_INTERNAL_API_KEY="parser-key",
+    )
+
+    assert finish.status_code == 200
+    assert finish.data["status"] == SearchBackfillRequest.Status.SUCCESS
+    assert finish.data["created_count"] == 1
+    assert finish.data["updated_count"] == 1
+
+
 def test_product_list_uses_lightweight_payload(settings, db):
     settings.BOT_API_KEY = "bot-key"
     upsert_products(marketplace_code="uzum", products=[product_payload()])
@@ -319,6 +519,7 @@ def test_product_list_uses_lightweight_payload(settings, db):
     assert response.status_code == 200
     row = response.data["results"][0]
     assert row["title"] == "Test product"
+    assert row["marketplace"]["code"] == "uzum"
     assert row["cover_image_url"] == "https://images.uzum.uz/test/t_product_540_high.jpg"
     assert "raw_data" not in row
     assert "specs" not in row
@@ -357,6 +558,30 @@ def test_visual_search_product_ids_matches_cover_fingerprint(db):
     ) == [p1.id]
 
 
+def test_image_fingerprint_rejects_decompression_bomb_warning(monkeypatch):
+    from PIL import Image
+
+    class FakeImage:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def convert(self, mode):
+            warnings.warn(
+                "image is too large",
+                Image.DecompressionBombWarning,
+                stacklevel=2,
+            )
+            return self
+
+    monkeypatch.setattr(Image, "open", lambda image_bytes: FakeImage())
+
+    with pytest.raises(ImageFingerprintError):
+        image_fingerprint(b"not-used")
+
+
 def test_visual_search_api_returns_product_cards(settings, db):
     settings.BOT_API_KEY = "bot-key"
     upsert_products(marketplace_code="uzum", products=[product_payload()])
@@ -383,6 +608,7 @@ def test_visual_search_api_returns_product_cards(settings, db):
 
     assert response.status_code == 200
     assert response.data[0]["id"] == product.id
+    assert response.data[0]["marketplace"]["code"] == "uzum"
     assert response.data[0]["cover_image_url"] == product.cover_image_url
 
 
