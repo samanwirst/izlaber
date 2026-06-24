@@ -149,6 +149,30 @@ class ServerStorage:
             },
         )
 
+    async def claim_search_backfill_request(self, *, worker_id: str) -> dict[str, Any] | None:
+        if self.dry_run:
+            return None
+        data = await self._post(
+            "/internal/search-backfill-requests/claim/",
+            {"marketplace": "uzum", "worker_id": worker_id},
+        )
+        return data or None
+
+    async def finish_search_backfill_request(
+        self,
+        *,
+        request_id: int,
+        status: str,
+        stats: dict[str, Any],
+        error: str = "",
+    ) -> None:
+        if self.dry_run:
+            return
+        await self._post(
+            f"/internal/search-backfill-requests/{request_id}/finish/",
+            {"status": status, "stats": stats, "error": error},
+        )
+
     async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.config.server_api_base_url}{path}"
         async with ClientSession(

@@ -9,7 +9,7 @@
 | Bot localization | `PYTHONPATH=server:. .venv/bin/pytest server/tests/test_bot_locales.py` |
 | Server ingestion/search | `PYTHONPATH=server:. .venv/bin/pytest server/tests/test_ingestion.py` |
 | User preferences | `PYTHONPATH=server:. .venv/bin/pytest server/tests/test_user_preferences.py` |
-| Parser normalizer/pipeline units | `PYTHONPATH=server:. .venv/bin/pytest parsers/uzum_market/test_normalizer.py` |
+| Parser normalizer/pipeline units | `PYTHONPATH=server:. .venv/bin/pytest parsers/uzum_market/test_normalizer.py parsers/wildberries/test_normalizer.py` |
 | Analytics site typecheck | `cd site && npm run typecheck` |
 | Analytics site production build | `cd site && npm run build` |
 
@@ -44,7 +44,7 @@ PYTHONPATH=server python server/manage.py migrate
 | Server model | `makemigrations --check`, `migrate`, focused Django tests |
 | Server search | `test_ingestion.py` and any new search-specific tests |
 | Analytics dashboard | `server/tests/test_analytics_summary.py`, `cd site && npm run typecheck`, `cd site && npm run build` |
-| Parser normalization | `parsers/uzum_market/test_normalizer.py` |
+| Parser normalization | `parsers/uzum_market/test_normalizer.py`, `parsers/wildberries/test_normalizer.py` |
 | Docker/env docs | Inspect `docker-compose.yml`, Dockerfiles, `.env.example`; run Docker only when needed |
 | Cross-cutting behavior | Ruff full repo plus full pytest suite |
 

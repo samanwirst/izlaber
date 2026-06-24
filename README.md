@@ -7,6 +7,7 @@ bot/                 Telegram bot, talks only to DRF API
 server/              Django + DRF catalog and ingestion API
 site/                Next.js analytics dashboard
 parsers/uzum_market/ Standalone marketplace parser pipeline
+parsers/wildberries/ Standalone Wildberries API parser pipeline
 ```
 
 The bot never imports parser code and never reads the database directly. Parsers send normalized products to `server` through internal ingestion endpoints using `PARSER_API_KEY`. The bot searches products through read endpoints using `BOT_API_KEY`.
@@ -123,6 +124,7 @@ to footwear titles containing `сникерсы`.
 
 ```bash
 ./scripts/rebuild_product_search_index.sh --marketplace uzum
+./scripts/rebuild_product_search_index.sh --marketplace wildberries
 ```
 
 Optional rerank:
@@ -150,6 +152,71 @@ Optional rerank:
 
 ## Run Parser
 
+Wildberries products deliverable to Uzbekistan are loaded through the public menu/catalog
+API, not through a browser. `WB_DESTINATION_IDS` controls the delivery geography; the
+default `123585551` was verified against `wildberries.uz` catalog responses with UZS
+prices. Large categories are recursively split with `priceU` ranges because WB catalog
+pages are effectively capped.
+
+Wildberries test mode:
+
+```bash
+python -m parsers.wildberries.cli crawl --mode test --limit 100 --dry-run
+```
+
+Wildberries staged production crawl:
+
+```bash
+docker build -f Dockerfile.parser -t izlaber-parser .
+./scripts/run_wildberries_staged.sh
+```
+
+The staged runner starts the wide pass, waits for it, starts the deep-fill pass,
+and then runs the Wildberries visual cover index. It uses separate state
+directories for wide and deep runs.
+
+Manual staged commands:
+
+```bash
+WB_STATE_DIR=.parser_state/wildberries-wide WB_PRICE_SPLIT_ENABLED=false WB_MAX_PAGES_PER_SEGMENT=3 ./scripts/run_wildberries_full.sh
+WB_STATE_DIR=.parser_state/wildberries-deep WB_PRICE_SPLIT_ENABLED=true WB_MAX_PAGES_PER_SEGMENT=100 ./scripts/run_wildberries_full.sh
+```
+
+Use the first command as a wide coverage pass: it takes only the first 3 catalog pages
+per category and leaves the crawl status partial, so unseen products are not deactivated.
+Use the second command later as a slower deep-fill pass with a separate state directory;
+otherwise the deep run will skip categories marked complete by the wide pass. Keep `WB_PAGE_SIZE=100`; WB
+intermittently returns `429` for larger page sizes. Checkpoint state is saved per segment
+page under `.parser_state/wildberries/checkpoint.json`, so interrupted runs can resume
+without restarting a large category from page 1.
+
+Targeted Wildberries search backfill:
+
+```bash
+./scripts/backfill_wildberries_search.sh snickers "шоколадный батончик"
+python -m parsers.wildberries.cli backfill-search snickers --limit 100
+```
+
+Use this when a bot/photo query is known to exist on `wildberries.uz`, but the local
+database has not reached that category yet. It writes only new/changed cards through
+the ingestion API and never deactivates unseen products.
+
+Wildberries crawl status on a Docker server:
+
+```bash
+WB_LOG_TAIL=40 ./scripts/wildberries_status.sh
+```
+
+The status command prints parser containers, watcher processes, WB product count,
+wide/deep checkpoints, and recent parser logs.
+
+After a large Wildberries import, rebuild search and cover indexes:
+
+```bash
+./scripts/rebuild_product_search_index.sh --marketplace wildberries
+./scripts/rebuild_product_visual_index.sh --marketplace wildberries
+```
+
 One-command full crawl:
 
 ```bash
@@ -160,6 +227,11 @@ The wrapper performs a fresh full catalog scan, but writes only new/changed card
 the database. Unchanged products are skipped by `content_hash`, deleted products are
 deactivated only after a successful unlimited full run, and `audit_uzum_catalog` runs
 automatically at the end.
+
+For server-side crawls, set `UZUM_AUTH_TOKEN` from a valid Uzum web session to
+enable direct REST/GraphQL mode. In this mode the parser does not launch Chrome;
+it reads root categories through REST and product cards through GraphQL. Without
+`UZUM_AUTH_TOKEN`, the parser falls back to the Chrome/CDP path.
 
 If the wrapper says `Server API is not reachable`, start Django first:
 
@@ -191,10 +263,41 @@ Resume:
 python -m parsers.uzum_market.cli crawl --mode full --resume
 ```
 
+Targeted URL backfill for products or SEO/listing pages that category crawling missed:
+
+```bash
+python -m parsers.uzum_market.cli backfill-urls --headful \
+  https://uzum.uz/ru/product/batonchik-snickers-50-g-42828
+python -m parsers.uzum_market.cli backfill-urls --url-file .parser_state/uzum_market/product-urls.txt --headful
+```
+
+Targeted search backfill for bot/search gaps:
+
+```bash
+./scripts/backfill_uzum_search.sh snickers "шоколадный батончик"
+python -m parsers.uzum_market.cli backfill-search snickers --limit 100 --headful
+python -m parsers.uzum_market.cli backfill-worker --poll-interval 3 --limit 30
+```
+
+The bot can create `/api/internal/search-backfill-requests/` when local search
+returns no exact candidates. The `uzum-search-backfill-worker` service claims
+those requests, runs `backfill-search`, writes only new/changed cards, and the
+bot retries the local search after a short wait. This is intended for exact gaps
+such as a product that marketplace search returns but the local catalog has not
+ingested yet.
+
 Audit existing catalog data:
 
 ```bash
 ./scripts/audit_uzum_catalog.sh --require-checkpoint
+./scripts/collect_uzum_category_coverage.sh
+PYTHONPATH=server python server/manage.py audit_uzum_category_coverage \
+  .parser_state/uzum_market/category-coverage.json
+PYTHONPATH=server python server/manage.py audit_uzum_category_coverage \
+  .parser_state/uzum_market/category-coverage.json \
+  --write-parser-shards .parser_state/uzum_market/shards \
+  --shards 6 \
+  --exclude-processed-state .parser_state/uzum_market
 ```
 
 Dry run:
@@ -214,7 +317,7 @@ Fast local launch for the API and bot:
 Equivalent raw Docker command:
 
 ```bash
-docker compose up --build server bot site
+docker compose up --build server bot site uzum-search-backfill-worker
 ```
 
 Docker starts PostgreSQL by default and points the API at

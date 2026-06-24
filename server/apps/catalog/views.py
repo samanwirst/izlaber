@@ -79,8 +79,15 @@ class ProductViewSet(
         if self.action != "list":
             queryset = queryset.select_related("marketplace", "seller", "category")
         else:
-            queryset = queryset.only(
+            queryset = queryset.select_related("marketplace").only(
                 "id",
+                "marketplace__id",
+                "marketplace__code",
+                "marketplace__name",
+                "marketplace__base_url",
+                "marketplace__is_active",
+                "marketplace__created_at",
+                "marketplace__updated_at",
                 "source_product_id",
                 "canonical_url",
                 "title",
@@ -144,7 +151,7 @@ class ProductViewSet(
     @action(detail=False, methods=["post"], url_path="visual-search")
     def visual_search(self, request):
         params = request.data
-        marketplace = params.get("marketplace") or "uzum"
+        marketplace = params.get("marketplace") or None
         active_only = str(params.get("active_only", "true")).lower() not in {"false", "0", "no"}
         limit = min(_positive_int(params.get("limit"), default=20), 100)
         max_distance = min(_positive_int(params.get("max_distance"), default=10), 64)
@@ -164,8 +171,16 @@ class ProductViewSet(
             output_field=IntegerField(),
         )
         queryset = (
-            Product.objects.only(
+            Product.objects.select_related("marketplace")
+            .only(
                 "id",
+                "marketplace__id",
+                "marketplace__code",
+                "marketplace__name",
+                "marketplace__base_url",
+                "marketplace__is_active",
+                "marketplace__created_at",
+                "marketplace__updated_at",
                 "source_product_id",
                 "canonical_url",
                 "title",

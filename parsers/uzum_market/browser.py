@@ -7,6 +7,7 @@ import shutil
 import socket
 import subprocess
 import unicodedata
+import uuid
 from math import ceil
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
@@ -14,7 +15,13 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 import aiohttp
 
 from parsers.uzum_market.config import ParserConfig
-from parsers.uzum_market.normalizer import extract_product_id, normalize_product
+from parsers.uzum_market.normalizer import (
+    canonical_product_url,
+    extract_product_id,
+    normalize_product,
+    product_urls_from_html,
+    products_from_html,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +30,78 @@ HOMEPAGE_URL = "https://uzum.uz/ru"
 ROOT_CATEGORIES_URL = "https://api.uzum.uz/api/main/root-categories"
 GRAPHQL_URL = "https://graphql.uzum.uz/"
 GRAPHQL_PAGE_SIZE = 100
-GRAPHQL_MAX_PAGE = 99
+GRAPHQL_MAX_PAGE = 50
 GRAPHQL_MAX_OFFSET_ITEMS = GRAPHQL_PAGE_SIZE * GRAPHQL_MAX_PAGE
 PRICE_FILTER_ID = "0"
+DEFAULT_MAKE_SEARCH_QUERY = """
+query MakeSearch_ItemsAndFilters($queryInput: MakeSearchQueryInput!) {
+  makeSearch(query: $queryInput) {
+    id
+    queryId
+    queryText
+    total
+    mayHaveAdultContent
+    category {
+      id
+      title
+      parent {
+        id
+        title
+      }
+    }
+    facets {
+      filter {
+        id
+        title
+      }
+      range {
+        min
+        max
+      }
+    }
+    items {
+      catalogCard {
+        ...ProductCardFragment
+        __typename
+      }
+    }
+  }
+}
+
+fragment ProductCardFragment on CatalogCard {
+  id
+  productId
+  title
+  adult
+  buyingOptions {
+    priceBlock {
+      sellPrice {
+        amount
+      }
+      finalPrice {
+        amount
+      }
+      fullPrice {
+        amount
+      }
+    }
+    deliveryOptions {
+      shortDate
+      stockType
+    }
+  }
+  minFullPrice
+  minSellPrice
+  photos {
+    key
+    link(trans: PRODUCT_540) {
+      high
+      low
+    }
+  }
+  feedbackQuantity
+  rating
+}"""
 GRAPHQL_HEADER_ALLOWLIST = {
     "accept",
     "accept-language",
@@ -166,14 +242,21 @@ class UzumBrowserClient:
         self._debug_port: int | None = None
         self._graphql_search_query: str | None = None
         self._graphql_headers: dict[str, str] | None = None
+        self._direct_http = bool(config.uzum_auth_token)
 
     async def __aenter__(self):
-        self._profile_dir = self._prepare_profile_dir()
-        self._debug_port = self._find_free_port()
-        self._chrome_process = self._launch_chrome(self._profile_dir, self._debug_port)
         self._session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=self.config.request_timeout)
         )
+        if self._direct_http:
+            self._graphql_search_query = DEFAULT_MAKE_SEARCH_QUERY
+            self._graphql_headers = self._direct_headers(content_type=True)
+            logger.info("Using direct Uzum GraphQL/REST mode.")
+            return self
+
+        self._profile_dir = self._prepare_profile_dir()
+        self._debug_port = self._find_free_port()
+        self._chrome_process = self._launch_chrome(self._profile_dir, self._debug_port)
         page_ws_url = await self._wait_for_debug_target(self._debug_port)
         websocket = await self._session.ws_connect(page_ws_url, max_msg_size=0)
         self._page = CdpPage(websocket)
@@ -198,9 +281,84 @@ class UzumBrowserClient:
         await page.wait_for_timeout(1_500)
         return await page.content()
 
+    async def collect_product_detail(self, url: str) -> dict | None:
+        canonical_url = canonical_product_url(url)
+        html = await self.fetch_product_html(canonical_url)
+        products = products_from_html(html, canonical_url)
+        if products:
+            product = products[0]
+            if self._is_missing_product(product):
+                return None
+            product["raw_data"] = {
+                **(product.get("raw_data") or {}),
+                "source": "product_json_ld",
+            }
+            return product
+
+        if self._page is None:
+            return None
+
+        raw = await self._page.evaluate(
+            """
+            (() => {
+                const text = (selector) =>
+                  (document.querySelector(selector)?.innerText || '').trim();
+                const attr = (selector, name) =>
+                  (document.querySelector(selector)?.getAttribute(name) || '').trim();
+                const title =
+                  text('h1') ||
+                  attr('meta[property="og:title"]', 'content') ||
+                  document.title;
+                const description =
+                  attr('meta[name="description"]', 'content') ||
+                  attr('meta[property="og:description"]', 'content');
+                const priceText = [
+                  '[data-test-id*="price"]',
+                  '[class*="price"]',
+                  '[class*="Price"]'
+                ].map((selector) => text(selector)).find(Boolean) || '';
+                const imageUrls = Array.from(document.querySelectorAll('img'))
+                  .map((img) => img.currentSrc || img.src || '')
+                  .filter(Boolean);
+                const categoryLinks = Array.from(document.querySelectorAll('a[href*="/category/"]'))
+                  .map((anchor) => ({
+                    title: (anchor.innerText || '').trim(),
+                    url: anchor.href || ''
+                  }))
+                  .filter((item) => item.title && item.url);
+                const category = categoryLinks.at(-1) || null;
+                return {
+                  title,
+                  description,
+                  current_price: priceText,
+                  image_urls: imageUrls,
+                  category: category ? {
+                    name: category.title,
+                    path_text: categoryLinks.map((item) => item.title).join(' / '),
+                    url: category.url
+                  } : null,
+                  category_path_text: categoryLinks.map((item) => item.title).join(' / '),
+                  availability: /нет в наличии|out of stock/i.test(document.body?.innerText || '')
+                    ? 'unavailable'
+                    : 'unknown',
+                  raw_data: {
+                    source: 'product_dom_fallback',
+                    url: window.location.href
+                  }
+                };
+            })()
+            """
+        )
+        if not isinstance(raw, dict) or not raw.get("title"):
+            return None
+        if self._is_missing_product(raw):
+            return None
+        return normalize_product(raw, canonical_url)
+
     async def collect_listing_links(self, url: str) -> tuple[list[str], list[str]]:
         page = await self._navigate(url)
         await self._auto_scroll(page)
+        html_product_urls = product_urls_from_html(await page.content())
         payload = await page.evaluate(
             """Array.from(document.querySelectorAll('a[href]'))
                 .map((anchor) => anchor.href)
@@ -208,10 +366,14 @@ class UzumBrowserClient:
         )
         urls = [self._canonicalize_url(value) for value in payload if isinstance(value, str)]
         category_urls = self._filter_paths(urls, "/category/")
-        product_urls = self._filter_paths(urls, "/product/")
+        product_urls = self._filter_paths([*html_product_urls, *urls], "/product/")
         return category_urls, product_urls
 
     async def collect_root_category_urls(self) -> list[str]:
+        if self._direct_http:
+            categories = await self._fetch_root_categories_http()
+            return self._category_urls_from_tree(categories)
+
         page = await self._navigate("https://uzum.uz/ru/category/vse-kategorii-1")
         await page.command("Network.enable")
         await self._discard_events()
@@ -373,6 +535,61 @@ class UzumBrowserClient:
                 break
 
         return products
+
+    async def collect_category_coverage(self, url: str) -> dict:
+        category_id = self._category_id_from_url(url)
+        if not category_id:
+            return {
+                "url": url,
+                "category_id": None,
+                "title": "",
+                "total": 0,
+                "addressable_total": 0,
+                "segments": 0,
+                "error": "category_id_not_found",
+            }
+
+        root_data = await self._fetch_graphql_search(
+            url,
+            category_id=category_id,
+            filters=[],
+            offset=0,
+            limit=0,
+        )
+        if root_data is None:
+            return {
+                "url": url,
+                "category_id": category_id,
+                "title": "",
+                "total": 0,
+                "addressable_total": 0,
+                "segments": 0,
+                "error": "graphql_empty_response",
+            }
+
+        total = int(root_data.get("total") or 0)
+        category = root_data.get("category") or {}
+        if total <= GRAPHQL_MAX_OFFSET_ITEMS:
+            return {
+                "url": url,
+                "category_id": category_id,
+                "title": category.get("title") or category.get("title_ru") or "",
+                "total": total,
+                "addressable_total": total,
+                "segments": 1 if total else 0,
+                "error": None,
+            }
+
+        segments = await self._build_graphql_segments(url, category_id)
+        return {
+            "url": url,
+            "category_id": category_id,
+            "title": category.get("title") or category.get("title_ru") or "",
+            "total": total,
+            "addressable_total": sum(segment_total for _filters, segment_total in segments),
+            "segments": len(segments),
+            "error": None,
+        }
 
     async def collect_category_page_urls(self, url: str) -> list[str]:
         category_id = self._category_id_from_url(url)
@@ -570,30 +787,33 @@ class UzumBrowserClient:
             },
             "query": self._graphql_search_query,
         }
-        last_error: RuntimeError | None = None
+        last_error: Exception | None = None
         for attempt in range(1, self.config.max_retries + 1):
-            async with self._session.post(
-                GRAPHQL_URL,
-                json=payload,
-                headers=self._graphql_headers,
-            ) as response:
-                body = await response.text()
-                if response.status >= 400:
-                    last_error = RuntimeError(f"Uzum GraphQL {response.status}: {body[:500]}")
-                    if response.status == 401:
-                        self._graphql_search_query = None
-                        self._graphql_headers = None
-                        await self._ensure_graphql_search(source_url)
-                        if self._graphql_search_query and self._graphql_headers:
-                            payload["query"] = self._graphql_search_query
-                else:
-                    data = json.loads(body)
-                    errors = data.get("errors") or []
-                    if not errors:
-                        return (data.get("data") or {}).get("makeSearch")
-                    last_error = RuntimeError(f"Uzum GraphQL errors: {errors[:2]}")
-                    if not self._is_retryable_graphql_error(errors):
-                        raise last_error
+            try:
+                async with self._session.post(
+                    GRAPHQL_URL,
+                    json=payload,
+                    headers=self._graphql_headers,
+                ) as response:
+                    body = await response.text()
+                    if response.status >= 400:
+                        last_error = RuntimeError(f"Uzum GraphQL {response.status}: {body[:500]}")
+                        if response.status == 401:
+                            self._graphql_search_query = None
+                            self._graphql_headers = None
+                            await self._ensure_graphql_search(source_url)
+                            if self._graphql_search_query and self._graphql_headers:
+                                payload["query"] = self._graphql_search_query
+                    else:
+                        data = json.loads(body)
+                        errors = data.get("errors") or []
+                        if not errors:
+                            return (data.get("data") or {}).get("makeSearch")
+                        last_error = RuntimeError(f"Uzum GraphQL errors: {errors[:2]}")
+                        if not self._is_retryable_graphql_error(errors):
+                            raise last_error
+            except (aiohttp.ClientError, TimeoutError, OSError) as error:
+                last_error = error
             if attempt < self.config.max_retries:
                 await asyncio.sleep(min(2**attempt, 10))
         if last_error:
@@ -693,6 +913,10 @@ class UzumBrowserClient:
     async def _ensure_graphql_search(self, source_url: str) -> None:
         if self._graphql_search_query and self._graphql_headers:
             return
+        if self._direct_http:
+            self._graphql_search_query = DEFAULT_MAKE_SEARCH_QUERY
+            self._graphql_headers = self._direct_headers(content_type=True)
+            return
         if self._page is None:
             raise RuntimeError("Browser page is not initialized.")
 
@@ -724,6 +948,47 @@ class UzumBrowserClient:
             return
 
         raise RuntimeError("Could not capture Uzum MakeSearch GraphQL request.")
+
+    async def _fetch_root_categories_http(self) -> list[dict]:
+        if self._session is None:
+            raise RuntimeError("HTTP session is not initialized.")
+
+        async with self._session.get(
+            ROOT_CATEGORIES_URL,
+            headers=self._direct_headers(content_type=False),
+        ) as response:
+            body = await response.text()
+            if response.status >= 400:
+                raise RuntimeError(f"Uzum root categories {response.status}: {body[:500]}")
+            data = json.loads(body)
+        categories = data.get("payload")
+        if not isinstance(categories, list):
+            raise RuntimeError("Uzum root categories response does not contain a payload list.")
+        return categories
+
+    def _direct_headers(self, *, content_type: bool) -> dict[str, str]:
+        headers = {
+            "accept": "application/json",
+            "accept-language": "ru-RU",
+            "apollographql-client-name": "web-customers",
+            "apollographql-client-version": "1.63.2",
+            "authorization": f"Bearer {self.config.uzum_auth_token}",
+            "city-id": "1",
+            "city-latitude": "41.379112",
+            "city-longitude": "69.29944",
+            "latitude": "41.379112",
+            "longitude": "69.29944",
+            "origin": BASE_URL,
+            "referer": f"{BASE_URL}/",
+            "user-agent": (
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+            ),
+            "x-iid": self.config.uzum_x_iid or str(uuid.uuid4()),
+        }
+        if content_type:
+            headers["content-type"] = "application/json"
+        return headers
 
     async def _discard_events(self) -> None:
         if self._page is None:
@@ -844,9 +1109,24 @@ class UzumBrowserClient:
             "SUBREQUEST_HTTP_ERROR",
             "Service Unavailable",
             "Request timed out",
+            "search_phase_execution_exception",
+            "all shards failed",
         )
         payload = json.dumps(errors, ensure_ascii=False)
         return any(marker in payload for marker in retryable_markers)
+
+    @staticmethod
+    def _is_missing_product(product: dict) -> bool:
+        title = str(product.get("title") or "").casefold()
+        description = str(product.get("description") or "").casefold()
+        markers = (
+            "не нашли такой товар",
+            "товар не найден",
+            "mahsulot topilmadi",
+            "bunday mahsulot topilmadi",
+            "product not found",
+        )
+        return any(marker in title or marker in description for marker in markers)
 
     @staticmethod
     def _price_range_from_facets(facets: list[dict]) -> tuple[int, int] | None:
@@ -938,11 +1218,18 @@ class UzumBrowserClient:
 
     def _prepare_profile_dir(self) -> Path:
         source = self.config.browser_profile_source
-        if not source.exists():
-            raise RuntimeError(f"Chrome profile source does not exist: {source}")
-
         runtime_dir = self.config.browser_runtime_profile_dir
         runtime_dir.mkdir(parents=True, exist_ok=True)
+        target_profile = runtime_dir / self.config.browser_profile_name
+        target_profile.mkdir(parents=True, exist_ok=True)
+
+        if not source.exists():
+            logger.info(
+                "Chrome profile source does not exist: %s. Using empty runtime profile.",
+                source,
+            )
+            return runtime_dir
+
         local_state_path = source / "Local State"
         runtime_local_state = runtime_dir / "Local State"
         if local_state_path.exists() and not runtime_local_state.exists():
@@ -950,10 +1237,12 @@ class UzumBrowserClient:
 
         source_profile = source / self.config.browser_profile_name
         if not source_profile.exists():
-            raise RuntimeError(f"Chrome profile does not exist: {source_profile}")
+            logger.info(
+                "Chrome profile does not exist: %s. Using empty runtime profile.",
+                source_profile,
+            )
+            return runtime_dir
 
-        target_profile = runtime_dir / self.config.browser_profile_name
-        target_profile.mkdir(parents=True, exist_ok=True)
         for name in PROFILE_FILES:
             source_path = source_profile / name
             if not source_path.exists():

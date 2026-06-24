@@ -46,6 +46,7 @@ class Command(BaseCommand):
             "id",
             "marketplace__code",
             "title",
+            "description",
             "brand",
             "category_path_text",
             "source_product_id",
@@ -66,6 +67,7 @@ class Command(BaseCommand):
                 product_id,
                 marketplace_code,
                 title,
+                description,
                 brand,
                 category_path_text,
                 source_product_id,
@@ -79,6 +81,7 @@ class Command(BaseCommand):
                     if skip_token_index
                     else product_search_terms(
                         title=title,
+                        description=description,
                         brand=brand,
                         category_path_text=category_path_text,
                         source_product_id=source_product_id,
@@ -89,6 +92,7 @@ class Command(BaseCommand):
                         id=product_id,
                         search_text=product_search_text(
                             title=title,
+                            description=description,
                             brand=brand,
                             category_path_text=category_path_text,
                             source_product_id=source_product_id,

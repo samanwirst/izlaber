@@ -125,6 +125,7 @@ def product_from_json_ld(data: dict[str, Any], canonical_url: str) -> dict[str, 
         "rating": aggregate_rating.get("ratingValue"),
         "reviews_count": aggregate_rating.get("reviewCount"),
         "image_urls": images,
+        "seller": _seller_from_schema(offers.get("seller")),
         "raw_data": data,
     }
     return normalize_product(raw, canonical_url)
@@ -138,7 +139,7 @@ def products_from_html(html: str, url: str) -> list[dict[str, Any]]:
             data = json.loads(unescape(raw_json.strip()))
         except json.JSONDecodeError:
             continue
-        entries = data if isinstance(data, list) else [data]
+        entries = _json_ld_entries(data)
         for entry in entries:
             if isinstance(entry, dict) and entry.get("@type") == "Product":
                 products.append(product_from_json_ld(entry, url))
@@ -171,3 +172,35 @@ def _availability_from_schema(value: str | None) -> str:
     if "outofstock" in lowered:
         return "unavailable"
     return "unknown"
+
+
+def _json_ld_entries(data: Any) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    stack = data if isinstance(data, list) else [data]
+    for entry in stack:
+        if not isinstance(entry, dict):
+            continue
+        entries.append(entry)
+        graph = entry.get("@graph")
+        if isinstance(graph, list):
+            entries.extend(graph_item for graph_item in graph if isinstance(graph_item, dict))
+    return entries
+
+
+def _seller_from_schema(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, list):
+        value = value[0] if value else None
+    if isinstance(value, str):
+        name = normalize_whitespace(value)
+        return {"name": name, "raw_data": value} if name else None
+    if not isinstance(value, dict):
+        return None
+    name = normalize_whitespace(value.get("name"))
+    if not name:
+        return None
+    return {
+        "source_seller_id": value.get("@id") or value.get("identifier"),
+        "name": name,
+        "url": value.get("url"),
+        "raw_data": value,
+    }

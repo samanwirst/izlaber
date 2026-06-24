@@ -468,6 +468,21 @@ a {
   resize: vertical;
 }
 
+.campaign-form .checkbox-label {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+.checkbox-label input {
+  accent-color: var(--green);
+  min-height: 0;
+  width: 18px;
+}
+
 .form-grid {
   display: grid;
   gap: 10px;
@@ -490,6 +505,56 @@ a {
 .campaign-list {
   display: grid;
   gap: 10px;
+}
+
+.broadcast-shell {
+  min-height: auto;
+}
+
+.broadcast-status {
+  min-height: 190px;
+}
+
+.broadcast-result {
+  border: 1px solid rgba(31, 122, 84, 0.22);
+  border-radius: 8px;
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+}
+
+.broadcast-success {
+  background: rgba(31, 122, 84, 0.1);
+}
+
+.broadcast-error {
+  background: rgba(157, 61, 85, 0.1);
+  border-color: rgba(157, 61, 85, 0.25);
+}
+
+.broadcast-metrics {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.broadcast-metrics span {
+  background: rgba(255, 253, 248, 0.7);
+  border: 1px solid rgba(223, 215, 200, 0.7);
+  border-radius: 8px;
+  color: var(--muted);
+  display: grid;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 6px;
+  padding: 12px;
+  text-transform: uppercase;
+}
+
+.broadcast-metrics b {
+  color: var(--text);
+  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 22px;
 }
 
 .campaign-row {

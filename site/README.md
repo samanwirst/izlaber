@@ -1,7 +1,7 @@
 # Izlaber Analytics Site
 
-Next.js analytics dashboard and sponsored campaign console for professional analysts,
-strategists, and marketers.
+Next.js analytics dashboard, sponsored campaign console, and Telegram broadcast console
+for professional analysts, strategists, and marketers.
 
 The site fetches aggregated data server-side from Django:
 
@@ -15,6 +15,13 @@ It also manages sponsored bot placements through:
 ```text
 GET/POST /api/v1/sponsored-campaigns/
 GET/PATCH /api/v1/sponsored-campaigns/{id}/
+```
+
+The broadcast console sends Telegram messages from a server action with
+`TELEGRAM_BOT_TOKEN`. Recipients are limited to users returned by:
+
+```text
+GET /api/v1/user-consents/?active_only=true
 ```
 
 Local development:

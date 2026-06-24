@@ -10,6 +10,8 @@ from django.conf import settings
 from bot.config import BotConfig, Config, _policy_url
 from bot.handlers.admin import _format_usd, _is_openai_status_admin
 from bot.handlers.common import (
+    _cover_image_to_jpeg,
+    _cover_url_needs_jpeg_upload,
     _expansion_filters,
     _local_results_need_ai,
     _merge_unique_products,
@@ -119,6 +121,26 @@ def test_product_card_renders_sponsored_label():
 
     assert "Рекламное предложение" in card
     assert "Sponsored product" in card
+
+
+def test_webp_product_cover_is_converted_to_jpeg_for_telegram():
+    from io import BytesIO
+
+    from PIL import Image
+
+    source = BytesIO()
+    Image.new("RGBA", (16, 16), (120, 40, 20, 255)).save(source, format="WEBP")
+
+    jpeg_bytes = _cover_image_to_jpeg(source.getvalue())
+
+    assert _cover_url_needs_jpeg_upload(
+        "https://basket-15.wbbasket.ru/vol2371/part237194/237194752/images/c516x688/1.webp"
+    )
+    assert not _cover_url_needs_jpeg_upload("https://images.uzum.uz/test/t_product_540_high.jpg")
+    assert jpeg_bytes is not None
+    assert jpeg_bytes.startswith(b"\xff\xd8")
+    with Image.open(BytesIO(jpeg_bytes)) as converted:
+        assert converted.format == "JPEG"
 
 
 def test_policy_urls_are_derived_from_public_base_url():

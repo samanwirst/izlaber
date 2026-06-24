@@ -1,9 +1,16 @@
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    UZUM_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium \
+    UZUM_BROWSER_PROFILE_SOURCE=/app/.parser_state/uzum_market/chrome-seed \
+    UZUM_BROWSER_PROFILE_NAME=Default
 
 WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends chromium ca-certificates fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml README.md /app/
 COPY parsers /app/parsers

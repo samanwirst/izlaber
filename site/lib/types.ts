@@ -53,6 +53,13 @@ export type ConsentSummary = {
   total: number;
 };
 
+export type UserConsent = {
+  telegram_user_id: number;
+  consent_version: string;
+  language_code: string;
+  has_active_consent: boolean;
+};
+
 export type AnalyticsSummary = {
   period: {
     days: number;

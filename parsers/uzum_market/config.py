@@ -26,6 +26,8 @@ class ParserConfig:
     browser_scroll_max_rounds: int = 60
     browser_interactive_captcha_timeout_seconds: int = 300
     discovery_start_urls: tuple[str, ...] = ("https://uzum.uz/ru/category/vse-kategorii-1",)
+    uzum_auth_token: str = ""
+    uzum_x_iid: str = ""
 
 
 def load_config() -> ParserConfig:
@@ -65,4 +67,6 @@ def load_config() -> ParserConfig:
         discovery_start_urls=tuple(
             url.strip() for url in raw_start_urls.split(",") if url.strip()
         ),
+        uzum_auth_token=getenv("UZUM_AUTH_TOKEN", ""),
+        uzum_x_iid=getenv("UZUM_X_IID", ""),
     )

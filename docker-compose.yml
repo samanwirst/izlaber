@@ -85,6 +85,34 @@ services:
       server:
         condition: service_healthy
 
+  uzum-search-backfill-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.parser
+    init: true
+    env_file:
+      - .env
+    environment:
+      SERVER_API_BASE_URL: http://server:8000/api
+    volumes:
+      - ./parsers:/app/parsers
+      - ./.parser_state:/app/.parser_state
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+    command:
+      [
+        "python",
+        "-m",
+        "parsers.uzum_market.cli",
+        "backfill-worker",
+        "--poll-interval",
+        "${UZUM_SEARCH_BACKFILL_WORKER_POLL_SECONDS:-3}",
+        "--limit",
+        "${UZUM_SEARCH_BACKFILL_WORKER_LIMIT:-30}",
+      ]
+
   postgres:
     image: postgres:16
     environment:

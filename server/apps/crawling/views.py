@@ -1,11 +1,12 @@
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.api_auth.authentication import ParserAPIKeyAuthentication
-from apps.crawling.models import CrawlRun
+from apps.api_auth.authentication import BotAPIKeyAuthentication, ParserAPIKeyAuthentication
+from apps.crawling.models import CrawlRun, SearchBackfillRequest
 from apps.crawling.serializers import (
     CrawlEventSerializer,
     CrawlRunFinishSerializer,
@@ -13,10 +14,17 @@ from apps.crawling.serializers import (
     CrawlRunStartSerializer,
     ProductHashBatchSerializer,
     ProductUpsertBatchSerializer,
+    SearchBackfillRequestClaimSerializer,
+    SearchBackfillRequestCreateSerializer,
+    SearchBackfillRequestFinishSerializer,
+    SearchBackfillRequestSerializer,
     SeenProductBatchSerializer,
 )
 from apps.crawling.services import (
+    claim_search_backfill_request,
+    create_search_backfill_request,
     finish_crawl_run,
+    finish_search_backfill_request,
     get_or_create_marketplace,
     get_product_delta_states,
     record_seen_product_ids,
@@ -27,6 +35,35 @@ from apps.crawling.services import (
 class InternalAPIView(APIView):
     authentication_classes = (ParserAPIKeyAuthentication,)
     permission_classes = (IsAuthenticated,)
+
+
+class BotInternalAPIView(APIView):
+    authentication_classes = (BotAPIKeyAuthentication,)
+    permission_classes = (IsAuthenticated,)
+
+
+class SearchBackfillRequestCreateView(BotInternalAPIView):
+    def post(self, request):
+        serializer = SearchBackfillRequestCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        backfill_request = create_search_backfill_request(
+            marketplace_code=serializer.validated_data["marketplace"],
+            query=serializer.validated_data["query"],
+            source=serializer.validated_data.get("source", "bot_search"),
+            requested_by_telegram_user_id=serializer.validated_data.get(
+                "requested_by_telegram_user_id"
+            ),
+            limit=serializer.validated_data.get("limit", 30),
+            priority=serializer.validated_data.get("priority", 100),
+            metadata=serializer.validated_data.get("metadata", {}),
+        )
+        return Response(SearchBackfillRequestSerializer(backfill_request).data, status=202)
+
+
+class SearchBackfillRequestDetailView(BotInternalAPIView):
+    def get(self, _request, pk: int):
+        backfill_request = get_object_or_404(SearchBackfillRequest, pk=pk)
+        return Response(SearchBackfillRequestSerializer(backfill_request).data)
 
 
 class CrawlRunStartView(InternalAPIView):
@@ -115,3 +152,30 @@ class CrawlEventCreateView(InternalAPIView):
         serializer.is_valid(raise_exception=True)
         event = serializer.save()
         return Response(CrawlEventSerializer(event).data, status=status.HTTP_201_CREATED)
+
+
+class SearchBackfillRequestClaimView(InternalAPIView):
+    def post(self, request):
+        serializer = SearchBackfillRequestClaimSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        backfill_request = claim_search_backfill_request(
+            marketplace_code=serializer.validated_data["marketplace"],
+            worker_id=serializer.validated_data["worker_id"],
+            stale_after_seconds=serializer.validated_data.get("stale_after_seconds", 600),
+        )
+        if backfill_request is None:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(SearchBackfillRequestSerializer(backfill_request).data)
+
+
+class SearchBackfillRequestFinishView(InternalAPIView):
+    def post(self, request, pk: int):
+        serializer = SearchBackfillRequestFinishSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        backfill_request = finish_search_backfill_request(
+            request_id=pk,
+            status=serializer.validated_data["status"],
+            stats=serializer.validated_data.get("stats", {}),
+            error=serializer.validated_data.get("error", ""),
+        )
+        return Response(SearchBackfillRequestSerializer(backfill_request).data)

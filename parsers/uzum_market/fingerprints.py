@@ -2,7 +2,6 @@ import hashlib
 import json
 from typing import Any
 
-
 HASH_FIELDS = (
     "title",
     "description",

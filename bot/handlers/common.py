@@ -9,11 +9,13 @@ from aiogram import F, Router
 from aiogram.enums import ChatAction, ParseMode
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.types import (
+    BufferedInputFile,
     InlineQueryResultArticle,
     InputTextMessageContent,
     Message,
     PhotoSize,
 )
+from aiohttp import ClientError, ClientSession, ClientTimeout
 
 from bot.config import Config
 from bot.keyboards.main_menu import is_more_button_text, main_menu_keyboard, more_results_keyboard
@@ -42,6 +44,8 @@ from bot.services.search_state import SearchSession, search_state
 router = Router(name="common")
 logger = logging.getLogger(__name__)
 
+MAX_COVER_DOWNLOAD_BYTES = 5 * 1024 * 1024
+WEBP_COVER_RE = re.compile(r"\.webp(?:[?#].*)?$", re.IGNORECASE)
 TOKEN_RE = re.compile(r"[0-9a-zа-яё]+", re.IGNORECASE)
 LATIN_RE = re.compile(r"[a-z]", re.IGNORECASE)
 UZUM_PRODUCT_ID_RE = re.compile(
@@ -1988,9 +1992,10 @@ async def _send_products(
         keyboard = product_card_keyboard(language_code, product_url=product_url)
         caption = render_product_card(product_for_render, index, language_code)
         if product.cover_image_url:
+            photo = await _telegram_cover_photo(product.cover_image_url, config)
             try:
                 await message.answer_photo(
-                    photo=product.cover_image_url,
+                    photo=photo,
                     caption=caption,
                     reply_markup=keyboard,
                 )
@@ -2002,6 +2007,85 @@ async def _send_products(
             disable_web_page_preview=False,
             reply_markup=keyboard,
         )
+
+
+async def _telegram_cover_photo(
+    cover_image_url: str,
+    config: Config,
+) -> str | BufferedInputFile:
+    if not _cover_url_needs_jpeg_upload(cover_image_url):
+        return cover_image_url
+
+    image_bytes = await _download_cover_image(
+        cover_image_url,
+        timeout=min(max(config.server_api_timeout, 1.0), 10.0),
+    )
+    if image_bytes is None:
+        return cover_image_url
+
+    jpeg_bytes = _cover_image_to_jpeg(image_bytes)
+    if jpeg_bytes is None:
+        return cover_image_url
+    return BufferedInputFile(jpeg_bytes, filename="product-cover.jpg")
+
+
+def _cover_url_needs_jpeg_upload(cover_image_url: str) -> bool:
+    return bool(WEBP_COVER_RE.search(cover_image_url))
+
+
+async def _download_cover_image(cover_image_url: str, *, timeout: float) -> bytes | None:
+    headers = {
+        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (compatible; IzlaberBot/1.0)",
+    }
+    try:
+        async with ClientSession(timeout=ClientTimeout(total=timeout), headers=headers) as session:
+            async with session.get(cover_image_url) as response:
+                if response.status != 200:
+                    logger.warning(
+                        "Cannot download product cover %s: HTTP %s",
+                        cover_image_url,
+                        response.status,
+                    )
+                    return None
+                content_length = response.content_length
+                if content_length and content_length > MAX_COVER_DOWNLOAD_BYTES:
+                    logger.warning(
+                        "Product cover is too large: %s bytes for %s",
+                        content_length,
+                        cover_image_url,
+                    )
+                    return None
+                image_bytes = await response.read()
+    except (TimeoutError, ClientError) as error:
+        logger.warning("Cannot download product cover %s: %s", cover_image_url, error)
+        return None
+
+    if len(image_bytes) > MAX_COVER_DOWNLOAD_BYTES:
+        logger.warning(
+            "Product cover is too large after download: %s bytes for %s",
+            len(image_bytes),
+            cover_image_url,
+        )
+        return None
+    return image_bytes
+
+
+def _cover_image_to_jpeg(image_bytes: bytes) -> bytes | None:
+    try:
+        from PIL import Image, UnidentifiedImageError
+    except ImportError as error:
+        logger.warning("Pillow is required to convert product cover: %s", error)
+        return None
+
+    try:
+        with Image.open(BytesIO(image_bytes)) as image:
+            output = BytesIO()
+            image.convert("RGB").save(output, format="JPEG", quality=88, optimize=True)
+            return output.getvalue()
+    except (OSError, UnidentifiedImageError) as error:
+        logger.warning("Cannot convert product cover to JPEG: %s", error)
+        return None
 
 
 def _user_id(message: Message) -> int | None:

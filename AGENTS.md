@@ -10,6 +10,7 @@ The repository has three main services:
 - `server/`: Django + DRF API, catalog storage, search, crawl ingestion, and migrations.
 - `site/`: Next.js analytics dashboard. It talks to the server API from server-side code only.
 - `parsers/uzum_market/`: standalone crawler pipeline that writes products through internal server endpoints.
+- `parsers/wildberries/`: standalone Wildberries catalog API crawler for products deliverable to Uzbekistan.
 
 ## Stack
 
@@ -32,6 +33,7 @@ The repository has three main services:
 | `site/` | Next.js analytics dashboard for aggregated bot/search/product events. |
 | `server/apps/*/migrations/` | Django migrations. Commit migrations with model changes. |
 | `parsers/uzum_market/` | Browser/GraphQL crawler, normalizer, checkpoints, parser CLI. |
+| `parsers/wildberries/` | Wildberries menu/catalog API crawler, price-split segmenter, normalizer, parser CLI. |
 | `scripts/` | Operational wrappers for Docker, parser runs, audit, and search/visual index rebuilds. |
 | `.parser_state/` | Local parser runtime profile/checkpoints. Ignored; do not commit. |
 
@@ -100,7 +102,11 @@ PYTHONPATH=server python server/manage.py migrate
 ./scripts/rebuild_product_search_index.sh --marketplace uzum
 ./scripts/rebuild_product_visual_index.sh --marketplace uzum
 ./scripts/backfill_uzum_search.sh snickers "шоколадный батончик"
+python -m parsers.uzum_market.cli backfill-worker --poll-interval 3 --limit 30
+python -m parsers.uzum_market.cli backfill-urls --headful <uzum-product-or-listing-url>
 ./scripts/audit_uzum_catalog.sh --require-checkpoint
+./scripts/run_wildberries_full.sh
+python -m parsers.wildberries.cli crawl --mode test --limit 100 --dry-run
 ```
 
 ## Engineering Conventions

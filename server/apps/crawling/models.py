@@ -88,3 +88,45 @@ class CrawlRunSeenProduct(models.Model):
                 name="unique_crawl_run_seen_product",
             )
         ]
+
+
+class SearchBackfillRequest(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        RUNNING = "running", "Running"
+        SUCCESS = "success", "Success"
+        PARTIAL = "partial", "Partial"
+        FAILED = "failed", "Failed"
+
+    marketplace = models.ForeignKey("catalog.Marketplace", on_delete=models.CASCADE)
+    query = models.CharField(max_length=255)
+    normalized_query = models.CharField(max_length=255)
+    source = models.CharField(max_length=64, default="bot_search")
+    requested_by_telegram_user_id = models.BigIntegerField(blank=True, null=True)
+    status = models.CharField(max_length=32, choices=Status.choices, default=Status.PENDING)
+    priority = models.PositiveSmallIntegerField(default=100)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    max_attempts = models.PositiveSmallIntegerField(default=3)
+    limit = models.PositiveSmallIntegerField(default=30)
+    worker_id = models.CharField(max_length=128, blank=True)
+    claimed_at = models.DateTimeField(blank=True, null=True)
+    finished_at = models.DateTimeField(blank=True, null=True)
+    discovered_count = models.PositiveIntegerField(default=0)
+    changed_count = models.PositiveIntegerField(default=0)
+    created_count = models.PositiveIntegerField(default=0)
+    updated_count = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("priority", "created_at")
+        indexes = [
+            models.Index(fields=["marketplace", "status", "priority", "created_at"]),
+            models.Index(fields=["marketplace", "normalized_query", "status"]),
+            models.Index(fields=["status", "claimed_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.marketplace.code} {self.status} {self.query}"

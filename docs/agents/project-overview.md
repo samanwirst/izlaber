@@ -15,7 +15,8 @@ Users can search by text, photo, or voice. The bot returns product cards with co
 | Catalog API | `server/apps/catalog/` | Product search, visual search, user language preferences, serializers. |
 | Crawl ingestion API | `server/apps/crawling/` | Crawl runs, batch upsert, product hash lookup, seen product tracking. |
 | Analytics dashboard | `site/` | Next.js dashboard for aggregated bot/search/product analytics. |
-| Parser pipeline | `parsers/uzum_market/` | Chrome/CDP and GraphQL-based crawler with checkpoint state. |
+| Uzum parser pipeline | `parsers/uzum_market/` | Chrome/CDP and GraphQL-based crawler with checkpoint state. |
+| Wildberries parser pipeline | `parsers/wildberries/` | Public WB menu/catalog API crawler with `priceU` segment splitting and checkpoint state. |
 | Operations | `scripts/`, `docker-compose.yml`, Dockerfiles | Local Docker, parser wrappers, audits, index rebuilds. |
 
 ## Current Data Flow
@@ -37,7 +38,8 @@ Users can search by text, photo, or voice. The bot returns product cards with co
 | Analytics events | `catalog_analyticsevent` | Database-backed bot/search/click events. |
 | Analytics dashboard cache/build output | `site/.next/`, `site/node_modules/` | Ignored local build/runtime data. |
 | Bot pagination state | `bot/services/search_state.py` memory | Lost on bot restart. |
-| Parser checkpoint/browser profile | `.parser_state/uzum_market/` | Local ignored runtime data. |
+| Uzum parser checkpoint/browser profile | `.parser_state/uzum_market/` | Local ignored runtime data. |
+| Wildberries parser checkpoint | `.parser_state/wildberries/` | Local ignored runtime data. |
 | Cover visual fingerprints | `Product.cover_image_ahash/dhash` | Database-backed; refresh with visual index script. |
 
 ## Needs Confirmation

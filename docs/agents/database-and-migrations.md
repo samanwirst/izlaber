@@ -42,6 +42,7 @@ Search index:
 
 ```bash
 ./scripts/rebuild_product_search_index.sh --marketplace uzum
+./scripts/rebuild_product_search_index.sh --marketplace wildberries
 ```
 
 Visual cover fingerprint index:
@@ -49,6 +50,7 @@ Visual cover fingerprint index:
 ```bash
 ./scripts/rebuild_product_visual_index.sh --marketplace uzum
 ./scripts/rebuild_product_visual_index.sh --marketplace uzum --source-product-id 2797446
+./scripts/rebuild_product_visual_index.sh --marketplace wildberries
 ```
 
 Audit:

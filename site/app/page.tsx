@@ -1,4 +1,5 @@
 import { AnalyticsDashboard } from "./components/AnalyticsDashboard";
+import { BroadcastConsole } from "./components/BroadcastConsole";
 import { LoginGate } from "./components/LoginGate";
 import { SponsoredCampaignConsole } from "./components/SponsoredCampaignConsole";
 import { logoutAction } from "./auth-actions";
@@ -36,6 +37,7 @@ export default async function Home({ searchParams }: HomeProps) {
       </form>
       <AnalyticsDashboard summary={summary} />
       <SponsoredCampaignConsole campaigns={campaigns} />
+      <BroadcastConsole activeConsentCount={summary.kpis.active_consents} />
     </main>
   );
 }

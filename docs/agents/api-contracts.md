@@ -60,12 +60,17 @@ Sponsored campaign contract:
 | `POST /api/internal/crawl-runs/{id}/seen-products/` | Record products seen during a crawl. |
 | `POST /api/internal/crawl-runs/{id}/finish/` | Finish crawl, optionally deactivate unseen products. |
 | `POST /api/internal/crawl-events/` | Record parser events. |
+| `POST /api/internal/search-backfill-requests/` | Bot-created targeted search miss request. Uses `BOT_API_KEY`. |
+| `GET /api/internal/search-backfill-requests/{id}/` | Bot polling for targeted backfill status. Uses `BOT_API_KEY`. |
+| `POST /api/internal/search-backfill-requests/claim/` | Parser worker claims one pending targeted backfill. Uses `PARSER_API_KEY`. |
+| `POST /api/internal/search-backfill-requests/{id}/finish/` | Parser worker records targeted backfill result. Uses `PARSER_API_KEY`. |
 
-Parser client/storage code: `parsers/uzum_market/storage.py`.
+Parser client/storage code: `parsers/uzum_market/storage.py`, `parsers/wildberries/storage.py`.
 
 ## Contract Change Checklist
 
 - Update serializers, views, and URLs together.
+- Product card responses include a compact `marketplace` object; keep bot rendering and analytics metadata in sync if this shape changes.
 - Update `bot/services/api_client.py` or parser storage client if response/request shape changes.
 - Add or update tests covering status code, auth, and response keys.
 - Update `server/README.md` and agent docs when a new endpoint is durable.

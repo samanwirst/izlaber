@@ -71,6 +71,11 @@ class Config:
     search_rate_limit_window_seconds: float = 60.0
     ai_rate_limit_max_events: int = 12
     ai_rate_limit_window_seconds: float = 3600.0
+    search_backfill_enabled: bool = True
+    search_backfill_wait_seconds: float = 18.0
+    search_backfill_poll_seconds: float = 2.0
+    search_backfill_limit: int = 30
+    search_backfill_max_queries: int = 3
 
 
 def load_config() -> Config:
@@ -200,6 +205,18 @@ def load_config() -> Config:
             1.0,
             float(getenv("BOT_AI_RATE_LIMIT_WINDOW_SECONDS", "3600")),
         ),
+        search_backfill_enabled=getenv("BOT_SEARCH_BACKFILL_ENABLED", "true").lower()
+        in {"1", "true", "yes"},
+        search_backfill_wait_seconds=max(
+            0.0,
+            float(getenv("BOT_SEARCH_BACKFILL_WAIT_SECONDS", "18")),
+        ),
+        search_backfill_poll_seconds=max(
+            0.5,
+            float(getenv("BOT_SEARCH_BACKFILL_POLL_SECONDS", "2")),
+        ),
+        search_backfill_limit=max(1, int(getenv("BOT_SEARCH_BACKFILL_LIMIT", "30"))),
+        search_backfill_max_queries=max(1, int(getenv("BOT_SEARCH_BACKFILL_MAX_QUERIES", "3"))),
     )
 
 

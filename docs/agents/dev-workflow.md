@@ -38,7 +38,30 @@ Parser test mode:
 
 ```bash
 python -m parsers.uzum_market.cli crawl --mode test --limit 100
+python -m parsers.wildberries.cli crawl --mode test --limit 100 --dry-run
 ```
+
+Targeted parser URL backfill:
+
+```bash
+python -m parsers.uzum_market.cli backfill-urls --headful <uzum-product-or-listing-url>
+python -m parsers.uzum_market.cli backfill-urls --url-file .parser_state/uzum_market/product-urls.txt --headful
+```
+
+Use this when a concrete product/SEO URL exists on Uzum but normal category
+crawling missed it. It writes through the ingestion API and does not deactivate
+unseen products.
+
+Targeted parser search backfill:
+
+```bash
+./scripts/backfill_uzum_search.sh snickers "шоколадный батончик"
+python -m parsers.uzum_market.cli backfill-worker --poll-interval 3 --limit 30
+```
+
+The bot may enqueue search miss requests through the server API. Keep the
+`uzum-search-backfill-worker` service running in environments where the bot must
+recover from local catalog gaps automatically.
 
 ## Run With Docker
 
@@ -62,6 +85,7 @@ Parser in Docker:
 
 ```bash
 docker compose --profile parser run --rm parser python -m parsers.uzum_market.cli crawl --mode test --limit 100
+docker compose --profile parser run --rm parser python -m parsers.wildberries.cli crawl --mode test --limit 100 --dry-run
 ```
 
 ## Common Maintenance Commands
@@ -69,6 +93,8 @@ docker compose --profile parser run --rm parser python -m parsers.uzum_market.cl
 ```bash
 ./scripts/rebuild_product_search_index.sh --marketplace uzum
 ./scripts/rebuild_product_visual_index.sh --marketplace uzum
+./scripts/rebuild_product_search_index.sh --marketplace wildberries
+./scripts/rebuild_product_visual_index.sh --marketplace wildberries
 ./scripts/audit_uzum_catalog.sh --require-checkpoint
 python -m bot.setup_profile
 ```

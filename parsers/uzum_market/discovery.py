@@ -3,6 +3,8 @@ from collections.abc import AsyncIterator
 from parsers.uzum_market.browser import UzumBrowserClient
 from parsers.uzum_market.config import ParserConfig
 
+ROOT_DISCOVERY_URL = "https://uzum.uz/ru/category/vse-kategorii-1"
+
 
 class UzumDiscovery:
     def __init__(
@@ -16,8 +18,11 @@ class UzumDiscovery:
 
     async def discover(self, limit: int | None = None) -> AsyncIterator[str]:
         seen_categories: set[str] = set()
-        root_category_urls = await self.client.collect_root_category_urls()
-        category_urls = root_category_urls or self.start_urls
+        if self.start_urls == [ROOT_DISCOVERY_URL]:
+            root_category_urls = await self.client.collect_root_category_urls()
+            category_urls = root_category_urls or self.start_urls
+        else:
+            category_urls = self.start_urls
 
         for category_url in category_urls:
             if category_url in seen_categories:

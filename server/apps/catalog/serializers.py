@@ -89,10 +89,13 @@ class ProductSerializer(serializers.ModelSerializer):
 
 
 class ProductCardSerializer(serializers.ModelSerializer):
+    marketplace = MarketplaceSerializer(read_only=True)
+
     class Meta:
         model = Product
         fields = (
             "id",
+            "marketplace",
             "source_product_id",
             "canonical_url",
             "title",

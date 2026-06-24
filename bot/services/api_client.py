@@ -19,6 +19,9 @@ class ProductDTO:
     title: str
     canonical_url: str
     cover_image_url: str | None
+    marketplace_code: str | None
+    marketplace_name: str | None
+    marketplace_base_url: str | None
     brand: str | None
     current_price: str | None
     old_price: str | None
@@ -58,13 +61,15 @@ class ServerAPIClient:
         *,
         limit: int = 5,
         offset: int = 0,
+        marketplace: str | None = None,
     ) -> list[ProductDTO]:
         params = {
             "q": query,
-            "marketplace": "uzum",
             "limit": str(limit),
             "offset": str(offset),
         }
+        if marketplace:
+            params["marketplace"] = marketplace
         if filters:
             params.update({key: str(value) for key, value in filters.items() if value is not None})
         data = await self._get("/v1/products/", params=params)
@@ -78,17 +83,20 @@ class ServerAPIClient:
         dhash: str,
         max_distance: int,
         limit: int = 5,
+        marketplace: str | None = None,
     ) -> list[ProductDTO]:
+        payload: dict[str, Any] = {
+            "ahash": ahash,
+            "dhash": dhash,
+            "active_only": True,
+            "max_distance": max_distance,
+            "limit": limit,
+        }
+        if marketplace:
+            payload["marketplace"] = marketplace
         data = await self._post(
             "/v1/products/visual-search/",
-            payload={
-                "ahash": ahash,
-                "dhash": dhash,
-                "marketplace": "uzum",
-                "active_only": True,
-                "max_distance": max_distance,
-                "limit": limit,
-            },
+            payload=payload,
         )
         rows = _response_rows(data)
         return [_parse_product(row) for row in rows[:limit]]
@@ -117,9 +125,10 @@ class ServerAPIClient:
         product_ids: list[int] | None = None,
         source_product_ids: list[str] | None = None,
         limit: int = 50,
+        marketplace: str = "uzum",
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "marketplace": "uzum",
+            "marketplace": marketplace,
             "limit": limit,
         }
         if product_ids:
@@ -127,6 +136,30 @@ class ServerAPIClient:
         if source_product_ids:
             payload["source_product_ids"] = source_product_ids
         data = await self._post("/v1/products/visual-index/", payload=payload)
+        return data if isinstance(data, dict) else {}
+
+    async def create_search_backfill_request(
+        self,
+        *,
+        query: str,
+        source: str,
+        telegram_user_id: int | None,
+        limit: int,
+        marketplace: str = "uzum",
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "marketplace": marketplace,
+            "query": query,
+            "source": source,
+            "requested_by_telegram_user_id": telegram_user_id,
+            "limit": limit,
+            "metadata": {"origin": "telegram_bot"},
+        }
+        data = await self._post("/internal/search-backfill-requests/", payload=payload)
+        return data if isinstance(data, dict) else {}
+
+    async def get_search_backfill_request(self, request_id: int) -> dict[str, Any]:
+        data = await self._get(f"/internal/search-backfill-requests/{request_id}/")
         return data if isinstance(data, dict) else {}
 
     async def get_product(self, product_id: int) -> ProductDTO:
@@ -255,6 +288,8 @@ def render_products(
             details.append(f"{product_label('rating', language_code)} {product.rating}")
         if product.reviews_count is not None:
             details.append(review_text(product.reviews_count, language_code))
+        if product.marketplace_name:
+            details.append(product.marketplace_name)
         suffix = f" - {escape(', '.join(details))}" if details else ""
         product_url = product.tracking_url or product.canonical_url
         lines.append(
@@ -285,17 +320,25 @@ def render_product_card(product: ProductDTO, index: int, language_code: str | No
     if product.category_path_text:
         category = escape(product.category_path_text)
         lines.append(f"{product_label('category', language_code)}: {category}")
+    if product.marketplace_name:
+        lines.append(
+            f"{product_label('marketplace', language_code)}: {escape(product.marketplace_name)}"
+        )
     lines.extend(["", f"<i>{escape(product_label('footer', language_code))}</i>"])
     return "\n".join(lines)
 
 
 def _parse_product(row: dict[str, Any]) -> ProductDTO:
+    marketplace = row.get("marketplace") if isinstance(row.get("marketplace"), dict) else {}
     return ProductDTO(
         id=row["id"],
         source_product_id=row.get("source_product_id"),
         title=row["title"],
         canonical_url=row["canonical_url"],
         cover_image_url=row.get("cover_image_url"),
+        marketplace_code=marketplace.get("code"),
+        marketplace_name=marketplace.get("name"),
+        marketplace_base_url=marketplace.get("base_url"),
         brand=row.get("brand"),
         current_price=row.get("current_price"),
         old_price=row.get("old_price"),

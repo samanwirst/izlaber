@@ -1,4 +1,4 @@
-import type { AnalyticsSummary, SponsoredCampaign } from "./types";
+import type { AnalyticsSummary, SponsoredCampaign, UserConsent } from "./types";
 
 export async function getAnalyticsSummary(days = 30): Promise<AnalyticsSummary> {
   return (await internalFetch(`/v1/analytics/summary/?days=${days}`)) as AnalyticsSummary;
@@ -28,6 +28,17 @@ export async function updateSponsoredCampaign(
 ) {
   return internalFetch(`/v1/sponsored-campaigns/${campaignId}/`, {
     method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getActiveUserConsents(): Promise<UserConsent[]> {
+  return (await internalFetch("/v1/user-consents/?active_only=true")) as UserConsent[];
+}
+
+export async function createAnalyticsEvent(payload: Record<string, unknown>) {
+  return internalFetch("/v1/analytics/events/", {
+    method: "POST",
     body: JSON.stringify(payload),
   });
 }

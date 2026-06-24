@@ -189,6 +189,7 @@ def _row_value(table: str, row: sqlite3.Row, column: str) -> Any:
     ):
         return product_search_text(
             title=row["title"],
+            description=row["description"] if "description" in row.keys() else None,
             brand=row["brand"],
             category_path_text=row["category_path_text"],
             source_product_id=row["source_product_id"],

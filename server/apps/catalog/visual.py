@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from io import BytesIO
 
@@ -27,13 +28,15 @@ def image_fingerprint(image_bytes: bytes) -> ImageFingerprint:
         raise ImageFingerprintError("Pillow is required for image fingerprinting") from error
 
     try:
-        with Image.open(BytesIO(image_bytes)) as image:
-            grayscale = image.convert("L")
-            return ImageFingerprint(
-                ahash=_average_hash(grayscale),
-                dhash=_difference_hash(grayscale),
-            )
-    except (OSError, UnidentifiedImageError) as error:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(BytesIO(image_bytes)) as image:
+                grayscale = image.convert("L")
+                return ImageFingerprint(
+                    ahash=_average_hash(grayscale),
+                    dhash=_difference_hash(grayscale),
+                )
+    except (OSError, UnidentifiedImageError, Image.DecompressionBombWarning) as error:
         raise ImageFingerprintError("Cannot decode image") from error
 
 

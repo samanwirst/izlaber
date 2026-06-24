@@ -6,6 +6,10 @@ from apps.crawling.views import (
     CrawlRunStartView,
     ProductHashBatchView,
     ProductUpsertBatchView,
+    SearchBackfillRequestClaimView,
+    SearchBackfillRequestCreateView,
+    SearchBackfillRequestDetailView,
+    SearchBackfillRequestFinishView,
     SeenProductBatchView,
 )
 
@@ -20,4 +24,24 @@ urlpatterns = [
     path("products/hash-batch/", ProductHashBatchView.as_view(), name="product-hash-batch"),
     path("crawl-runs/<int:pk>/finish/", CrawlRunFinishView.as_view(), name="crawl-run-finish"),
     path("crawl-events/", CrawlEventCreateView.as_view(), name="crawl-event-create"),
+    path(
+        "search-backfill-requests/",
+        SearchBackfillRequestCreateView.as_view(),
+        name="search-backfill-request-create",
+    ),
+    path(
+        "search-backfill-requests/<int:pk>/",
+        SearchBackfillRequestDetailView.as_view(),
+        name="search-backfill-request-detail",
+    ),
+    path(
+        "search-backfill-requests/claim/",
+        SearchBackfillRequestClaimView.as_view(),
+        name="search-backfill-request-claim",
+    ),
+    path(
+        "search-backfill-requests/<int:pk>/finish/",
+        SearchBackfillRequestFinishView.as_view(),
+        name="search-backfill-request-finish",
+    ),
 ]

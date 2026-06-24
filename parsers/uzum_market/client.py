@@ -44,7 +44,7 @@ class UzumHTTPClient:
                     if response.status >= 500:
                         raise ClientError(f"Server returned {response.status}")
                     return await response.text()
-            except (ClientError, asyncio.TimeoutError) as error:
+            except (TimeoutError, ClientError) as error:
                 if attempt == self.config.max_retries:
                     raise
                 delay = 2 ** attempt

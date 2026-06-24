@@ -1,8 +1,9 @@
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
-from django.db import transaction
+from django.db import models, transaction
 from django.db.models import Subquery
 from django.utils import timezone
 
@@ -15,7 +16,7 @@ from apps.catalog.models import (
     Seller,
 )
 from apps.catalog.search import product_search_text, replace_product_search_terms
-from apps.crawling.models import CrawlRun, CrawlRunSeenProduct
+from apps.crawling.models import CrawlRun, CrawlRunSeenProduct, SearchBackfillRequest
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,10 +27,148 @@ class UpsertStats:
     reactivated: int = 0
 
 
+def normalize_search_backfill_query(query: str) -> str:
+    return " ".join(str(query or "").split())[:255]
+
+
+@transaction.atomic
+def create_search_backfill_request(
+    *,
+    marketplace_code: str,
+    query: str,
+    source: str = "bot_search",
+    requested_by_telegram_user_id: int | None = None,
+    limit: int = 30,
+    priority: int = 100,
+    metadata: dict[str, Any] | None = None,
+) -> SearchBackfillRequest:
+    normalized_query = normalize_search_backfill_query(query)
+    marketplace = get_or_create_marketplace(marketplace_code)
+    reusable = (
+        SearchBackfillRequest.objects.select_for_update()
+        .filter(
+            marketplace=marketplace,
+            normalized_query=normalized_query.casefold(),
+            status__in=[
+                SearchBackfillRequest.Status.PENDING,
+                SearchBackfillRequest.Status.RUNNING,
+            ],
+        )
+        .order_by("priority", "created_at")
+        .first()
+    )
+    if reusable is not None:
+        if priority < reusable.priority:
+            reusable.priority = priority
+            reusable.save(update_fields=["priority", "updated_at"])
+        return reusable
+
+    return SearchBackfillRequest.objects.create(
+        marketplace=marketplace,
+        query=normalized_query,
+        normalized_query=normalized_query.casefold(),
+        source=source[:64] or "bot_search",
+        requested_by_telegram_user_id=requested_by_telegram_user_id,
+        limit=max(1, min(int(limit), 100)),
+        priority=max(1, min(int(priority), 1000)),
+        metadata=metadata or {},
+    )
+
+
+@transaction.atomic
+def claim_search_backfill_request(
+    *,
+    marketplace_code: str,
+    worker_id: str,
+    stale_after_seconds: int = 600,
+) -> SearchBackfillRequest | None:
+    marketplace = get_or_create_marketplace(marketplace_code)
+    stale_before = timezone.now() - timedelta(seconds=stale_after_seconds)
+    SearchBackfillRequest.objects.filter(
+        marketplace=marketplace,
+        status=SearchBackfillRequest.Status.RUNNING,
+        claimed_at__lt=stale_before,
+        attempts__lt=models.F("max_attempts"),
+    ).update(
+        status=SearchBackfillRequest.Status.PENDING,
+        worker_id="",
+        claimed_at=None,
+        last_error="stale worker claim released",
+    )
+    request = (
+        SearchBackfillRequest.objects.select_for_update()
+        .filter(
+            marketplace=marketplace,
+            status=SearchBackfillRequest.Status.PENDING,
+            attempts__lt=models.F("max_attempts"),
+        )
+        .order_by("priority", "created_at")
+        .first()
+    )
+    if request is None:
+        return None
+    request.status = SearchBackfillRequest.Status.RUNNING
+    request.worker_id = worker_id[:128]
+    request.claimed_at = timezone.now()
+    request.finished_at = None
+    request.attempts += 1
+    request.last_error = ""
+    request.save(
+        update_fields=[
+            "status",
+            "worker_id",
+            "claimed_at",
+            "finished_at",
+            "attempts",
+            "last_error",
+            "updated_at",
+        ]
+    )
+    return request
+
+
+@transaction.atomic
+def finish_search_backfill_request(
+    *,
+    request_id: int,
+    status: str,
+    stats: dict[str, Any] | None = None,
+    error: str = "",
+) -> SearchBackfillRequest:
+    request = SearchBackfillRequest.objects.select_for_update().get(pk=request_id)
+    stats = stats or {}
+    status = (
+        status
+        if status in SearchBackfillRequest.Status.values
+        else SearchBackfillRequest.Status.FAILED
+    )
+    request.status = status
+    request.finished_at = timezone.now()
+    request.discovered_count = int(stats.get("discovered") or 0)
+    request.changed_count = int(stats.get("changed") or 0)
+    request.created_count = int(stats.get("created") or 0)
+    request.updated_count = int(stats.get("updated") or 0)
+    request.last_error = error[:4000]
+    request.metadata = {**request.metadata, "last_stats": stats}
+    request.save()
+    return request
+
+
 def get_or_create_marketplace(code: str) -> Marketplace:
+    marketplace_defaults = {
+        "uzum": {
+            "name": "Uzum Market",
+            "base_url": "https://uzum.uz",
+        },
+        "wildberries": {
+            "name": "Wildberries",
+            "base_url": "https://www.wildberries.uz",
+        },
+    }
+    marketplace_default = marketplace_defaults.get(code)
     defaults = {
-        "name": "Uzum Market" if code == "uzum" else code.title(),
-        "base_url": "https://uzum.uz" if code == "uzum" else "",
+        "name": marketplace_default["name"] if marketplace_default else code.title(),
+        "base_url": marketplace_default["base_url"] if marketplace_default else "",
         "is_active": True,
     }
     marketplace, _ = Marketplace.objects.get_or_create(code=code, defaults=defaults)
@@ -101,11 +240,21 @@ def upsert_products(
     marketplace = get_or_create_marketplace(marketplace_code)
     stats = {"created": 0, "updated": 0, "unchanged": 0, "reactivated": 0}
     now = timezone.now()
+    seller_cache: dict[tuple[str, str], Seller | None] = {}
+    category_cache: dict[tuple[str, str], Category | None] = {}
 
     for payload in products:
         source_product_id = str(payload["source_product_id"])
-        seller = _upsert_seller(marketplace, payload.get("seller") or {})
-        category = _upsert_category(marketplace, payload.get("category") or {})
+        seller_payload = payload.get("seller") or {}
+        category_payload = payload.get("category") or {}
+        seller_key = _seller_cache_key(seller_payload)
+        category_key = _category_cache_key(category_payload)
+        if seller_key not in seller_cache:
+            seller_cache[seller_key] = _upsert_seller(marketplace, seller_payload)
+        if category_key not in category_cache:
+            category_cache[category_key] = _upsert_category(marketplace, category_payload)
+        seller = seller_cache[seller_key]
+        category = category_cache[category_key]
         defaults = _product_defaults(payload, seller=seller, category=category, now=now)
         product, created = Product.objects.get_or_create(
             marketplace=marketplace,
@@ -245,6 +394,13 @@ def _upsert_seller(marketplace: Marketplace, payload: dict[str, Any]) -> Seller 
     return seller
 
 
+def _seller_cache_key(payload: dict[str, Any]) -> tuple[str, str]:
+    source_seller_id = payload.get("source_seller_id")
+    if source_seller_id:
+        return ("source", str(source_seller_id))
+    return ("name", str(payload.get("name") or ""))
+
+
 def _upsert_category(marketplace: Marketplace, payload: dict[str, Any]) -> Category | None:
     name = payload.get("name") or payload.get("path_text")
     if not name:
@@ -270,6 +426,13 @@ def _upsert_category(marketplace: Marketplace, payload: dict[str, Any]) -> Categ
         defaults=defaults,
     )
     return category
+
+
+def _category_cache_key(payload: dict[str, Any]) -> tuple[str, str]:
+    source_category_id = payload.get("source_category_id")
+    if source_category_id:
+        return ("source", str(source_category_id))
+    return ("path", str(payload.get("path_text") or payload.get("name") or ""))
 
 
 def _product_defaults(
@@ -299,6 +462,7 @@ def _product_defaults(
         "raw_data": payload.get("raw_data") or {},
         "search_text": product_search_text(
             title=payload["title"],
+            description=payload.get("description"),
             brand=payload.get("brand"),
             category_path_text=payload.get("category_path_text"),
             source_product_id=payload["source_product_id"],
