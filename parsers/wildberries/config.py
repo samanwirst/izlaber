@@ -20,7 +20,7 @@ class ParserConfig:
     catalog_api_base_url: str = "https://catalog.wb.ru"
     search_url: str = "https://search.wb.ru/exactmatch/ru/common/v18/search"
     marketplace_code: str = "wildberries"
-    destination_ids: str = "123585551"
+    destination_ids: str = "495"
     currency_param: str = "uzs"
     currency_code: str = "UZS"
     locale: str = "ru"
@@ -59,7 +59,7 @@ def load_config() -> ParserConfig:
             "https://search.wb.ru/exactmatch/ru/common/v18/search",
         ),
         marketplace_code=getenv("WB_MARKETPLACE_CODE", "wildberries"),
-        destination_ids=getenv("WB_DESTINATION_IDS", "123585551"),
+        destination_ids=getenv("WB_DESTINATION_IDS", "495"),
         currency_param=getenv("WB_CURRENCY_PARAM", "uzs"),
         currency_code=getenv("WB_CURRENCY_CODE", "UZS"),
         locale=getenv("WB_LOCALE", "ru"),

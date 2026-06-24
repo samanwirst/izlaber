@@ -2,6 +2,7 @@ import re
 from decimal import Decimal, InvalidOperation
 from html import unescape
 from typing import Any
+from urllib.parse import urlencode
 
 from parsers.common import content_hash
 from parsers.wildberries.client import CatalogSegment, CategoryTask
@@ -26,7 +27,11 @@ def normalize_product(
     current_price, old_price = _product_prices(raw)
     seller_name = normalize_whitespace(raw.get("supplier"))
     brand = normalize_whitespace(raw.get("brand"))
-    canonical_url = canonical_product_url(source_product_id)
+    canonical_url = canonical_product_url(
+        source_product_id,
+        target_url=_product_target_url(raw, category),
+        size_id=_default_size_id(raw),
+    )
     normalized = {
         "source_product_id": source_product_id,
         "canonical_url": canonical_url,
@@ -109,8 +114,38 @@ def normalize_price(value: Any) -> str | None:
         return None
 
 
-def canonical_product_url(source_product_id: str) -> str:
-    return f"{BASE_URL}/catalog/{source_product_id}/detail.aspx"
+def canonical_product_url(
+    source_product_id: str,
+    *,
+    target_url: str | None = None,
+    size_id: str | None = None,
+) -> str:
+    params = []
+    if target_url:
+        params.append(("targetUrl", target_url))
+    if size_id:
+        params.append(("size", size_id))
+    query = f"?{urlencode(params)}" if params else ""
+    return f"{BASE_URL}/catalog/{source_product_id}/detail.aspx{query}"
+
+
+def _product_target_url(raw: dict[str, Any], category: CategoryTask) -> str:
+    raw_target = normalize_whitespace(raw.get("targetUrl") or raw.get("target_url"))
+    if raw_target and raw_target.isalnum():
+        return raw_target.upper()
+    if category.source_category_id.startswith("search:"):
+        return "SG"
+    return "GP"
+
+
+def _default_size_id(raw: dict[str, Any]) -> str | None:
+    for size in raw.get("sizes") or []:
+        if not isinstance(size, dict):
+            continue
+        size_id = size.get("optionId") or size.get("ch")
+        if size_id not in (None, ""):
+            return str(size_id)
+    return None
 
 
 def _product_prices(raw: dict[str, Any]) -> tuple[str | None, str | None]:
