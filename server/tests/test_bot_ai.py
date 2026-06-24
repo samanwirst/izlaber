@@ -45,14 +45,19 @@ from bot.middlewares.rate_limit import (
     _event_scopes,
     _format_retry_after,
 )
+from bot.services import ai_reranker as ai_reranker_service
 from bot.services.ai_audio import _language_name, _transcription_prompt
 from bot.services.ai_reranker import (
     OPENAI_PROBE_MAX_OUTPUT_TOKENS,
     SearchExpansion,
+    SearchQueryUnderstanding,
     _is_quota_exhausted_response,
+    _local_query_understanding,
     _parse_search_expansions,
+    _query_needs_understanding,
     _rank_products_from_ids,
     rerank_products,
+    understand_search_query,
 )
 from bot.services.ai_runtime import AIRuntimeState
 from bot.services.ai_vision import PhotoSearchQuery, parse_photo_search_output
@@ -193,6 +198,131 @@ async def test_ai_rerank_falls_back_without_api_key():
     products = [product(1, "A"), product(2, "B")]
 
     assert await rerank_products(query="phone", products=products, config=config) == products
+
+
+def test_query_understanding_extracts_product_intent_from_story():
+    query = (
+        "Я как то был в Турции и увидел очень красивую тарелку из интересного "
+        "зеленого камня. Я не знаю, что это был за камень, но он очень красивый. "
+        "Эта тарелка она переливалась словно кольцами и я бы хотел ее к себе домой"
+    )
+
+    assert _query_needs_understanding(query) is True
+
+    result = _local_query_understanding(query)
+
+    assert result.query == "зеленая тарелка камень"
+    assert result.source == "local"
+    assert [expansion.query for expansion in result.search_queries] == [
+        "зеленая тарелка камень",
+        "тарелка зеленая камень",
+        "зеленая тарелка",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_understand_search_query_uses_ai_only_for_narrative(monkeypatch):
+    calls: list[str] = []
+
+    async def fake_request_query_understanding(*, query, config):
+        calls.append(query)
+        return SearchQueryUnderstanding(
+            query="зеленая каменная тарелка",
+            search_queries=[SearchExpansion("зеленая каменная тарелка")],
+            source="ai",
+        )
+
+    monkeypatch.setattr(ai_reranker_service, "_enabled", lambda _config: True)
+    monkeypatch.setattr(
+        ai_reranker_service,
+        "_request_query_understanding",
+        fake_request_query_understanding,
+    )
+    config = Config(bot=BotConfig(token="test"), openai_api_key="key")
+
+    direct = await understand_search_query(query="чехол на телефон", config=config)
+    narrative = await understand_search_query(
+        query="Я видел красивую зеленую тарелку из камня и хочу такую домой.",
+        config=config,
+    )
+
+    assert direct.query == "чехол на телефон"
+    assert direct.source == "original"
+    assert narrative.query == "зеленая каменная тарелка"
+    assert calls == ["Я видел красивую зеленую тарелку из камня и хочу такую домой."]
+
+
+@pytest.mark.asyncio
+async def test_text_search_uses_understood_query_for_candidates(monkeypatch):
+    original_query = (
+        "Я как то был в Турции и увидел очень красивую тарелку из интересного "
+        "зеленого камня. Я не знаю, что это был за камень."
+    )
+    searched_queries: list[str] = []
+    sent_queries: list[str] = []
+    tracked_events: list[tuple[str, str]] = []
+
+    async def fake_understand_search_query(*, query, config):
+        assert query == original_query
+        return SearchQueryUnderstanding(
+            query="зеленая каменная тарелка",
+            search_queries=[
+                SearchExpansion("зеленая каменная тарелка"),
+                SearchExpansion("тарелка из зеленого камня"),
+            ],
+            source="ai",
+        )
+
+    async def fake_load_ranked_candidates(**kwargs):
+        searched_queries.append(kwargs["query"])
+        return [product(1, "Круглая тарелка, зеленая")]
+
+    async def fake_load_understanding_expanded_products(**_kwargs):
+        return []
+
+    async def fake_load_sponsored_products(**_kwargs):
+        return []
+
+    async def fake_track_message_event(**kwargs):
+        tracked_events.append((kwargs["event_type"], kwargs["query"]))
+
+    async def fake_replace_status_message(*_args, **_kwargs):
+        return None
+
+    async def fake_send_products(_message, _products, **kwargs):
+        sent_queries.append(kwargs["query"])
+
+    monkeypatch.setattr(common_handlers, "understand_search_query", fake_understand_search_query)
+    monkeypatch.setattr(common_handlers, "_load_ranked_candidates", fake_load_ranked_candidates)
+    monkeypatch.setattr(
+        common_handlers,
+        "_load_understanding_expanded_products",
+        fake_load_understanding_expanded_products,
+    )
+    monkeypatch.setattr(common_handlers, "_load_sponsored_products", fake_load_sponsored_products)
+    monkeypatch.setattr(common_handlers, "track_message_event", fake_track_message_event)
+    monkeypatch.setattr(common_handlers, "_replace_status_message", fake_replace_status_message)
+    monkeypatch.setattr(common_handlers, "_send_products", fake_send_products)
+
+    message = Message(
+        message_id=1,
+        date=datetime.now(),
+        chat=Chat(id=10, type="private"),
+        from_user=User(id=1, is_bot=False, first_name="Test", language_code="ru"),
+        text=original_query,
+    )
+
+    await common_handlers._run_text_search(
+        message=message,
+        config=Config(bot=BotConfig(token="test"), openai_api_key="key"),
+        query=original_query,
+        status_message=object(),
+    )
+
+    assert searched_queries == ["зеленая каменная тарелка"]
+    assert sent_queries == ["зеленая каменная тарелка"]
+    assert ("search", original_query) in tracked_events
+    assert ("search_query_understood", "зеленая каменная тарелка") in tracked_events
 
 
 def test_search_state_isolated_by_user():

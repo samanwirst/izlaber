@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -36,6 +37,13 @@ class SearchExpansion:
 
 
 @dataclass(frozen=True, slots=True)
+class SearchQueryUnderstanding:
+    query: str
+    search_queries: list[SearchExpansion]
+    source: str
+
+
+@dataclass(frozen=True, slots=True)
 class ProductRankResult:
     products: list[ProductDTO]
     should_expand: bool
@@ -55,6 +63,30 @@ async def rerank_products(
         expansion_allowed=False,
     )
     return result.products
+
+
+async def understand_search_query(*, query: str, config: Config) -> SearchQueryUnderstanding:
+    normalized_query = _compact_text(query, 500)
+    if not normalized_query or not _query_needs_understanding(normalized_query):
+        return SearchQueryUnderstanding(
+            query=normalized_query,
+            search_queries=[SearchExpansion(normalized_query)] if normalized_query else [],
+            source="original",
+        )
+
+    fallback = _local_query_understanding(normalized_query)
+    if not _enabled(config) or not config.openai_search_expand_enabled:
+        return fallback
+
+    try:
+        ai_result = await _request_query_understanding(query=normalized_query, config=config)
+    except AIRerankError as error:
+        logger.warning("OpenAI query understanding failed: %s", error)
+        if error.quota_exhausted:
+            ai_runtime_state.mark_quota_exhausted(str(error))
+        return fallback
+
+    return ai_result or fallback
 
 
 async def rank_products(
@@ -202,6 +234,94 @@ async def _request_rank_result(
     }
 
 
+async def _request_query_understanding(
+    *,
+    query: str,
+    config: Config,
+) -> SearchQueryUnderstanding | None:
+    payload = {
+        "model": config.openai_model,
+        "instructions": _query_understanding_instructions(),
+        "input": json.dumps(
+            {"query": query},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ),
+        "max_output_tokens": min(max(160, config.openai_max_output_tokens), 320),
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "product_query_understanding",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "primary_query": {"type": "string"},
+                        "search_queries": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "properties": {
+                                    "query": {"type": "string"},
+                                    "min_price": {"type": ["integer", "null"]},
+                                    "max_price": {"type": ["integer", "null"]},
+                                },
+                                "required": ["query", "min_price", "max_price"],
+                            },
+                        },
+                    },
+                    "required": ["primary_query", "search_queries"],
+                },
+            }
+        },
+    }
+    headers = {
+        "Authorization": f"Bearer {config.openai_api_key}",
+        "Content-Type": "application/json",
+    }
+    timeout = ClientTimeout(total=config.openai_timeout)
+    try:
+        async with ClientSession(timeout=timeout, headers=headers) as session:
+            async with session.post(RESPONSES_API_URL, json=payload) as response:
+                body = await response.text()
+                if response.status >= 400:
+                    raise AIRerankError(
+                        f"HTTP {response.status}: {body[:300]}",
+                        quota_exhausted=_is_quota_exhausted_response(
+                            status=response.status,
+                            body=body,
+                        ),
+                    )
+                data = json.loads(body)
+    except (ClientError, TimeoutError, json.JSONDecodeError) as error:
+        raise AIRerankError(str(error)) from error
+
+    output_text = _extract_output_text(data)
+    if not output_text:
+        raise AIRerankError("empty model output")
+    try:
+        parsed = json.loads(output_text)
+    except json.JSONDecodeError as error:
+        raise AIRerankError(f"invalid JSON output: {output_text[:300]}") from error
+
+    primary_query = _clean_query(parsed.get("primary_query"))
+    expansions = _parse_search_expansions(
+        parsed.get("search_queries"),
+        max_queries=config.openai_search_expand_max_queries,
+    )
+    if not primary_query and expansions:
+        primary_query = expansions[0].query
+    if not primary_query:
+        return None
+    return SearchQueryUnderstanding(
+        query=primary_query,
+        search_queries=_dedupe_expansions([SearchExpansion(primary_query), *expansions]),
+        source="ai",
+    )
+
+
 def _enabled(config: Config) -> bool:
     return bool(
         config.openai_rerank_enabled
@@ -269,6 +389,26 @@ def _instructions() -> str:
     )
 
 
+def _query_understanding_instructions() -> str:
+    return (
+        "Ты превращаешь человеческое описание или историю в короткие поисковые запросы "
+        "для маркетплейса. Верни только JSON по схеме. "
+        "Главная задача: извлечь товар, который пользователь хочет найти, и обязательные "
+        "атрибуты: тип товара, цвет, материал, форма, назначение, бренд, размер. "
+        "Игнорируй путешествия, эмоции, место воспоминания, слова 'хочу', 'видел', "
+        "'не знаю', 'красивый', если они не описывают товар. "
+        "primary_query должен быть на русском, 2-7 слов, без лишней истории и без слов "
+        "'купить', 'найди', 'покажи'. "
+        "Если материал неизвестен, сохрани общий материал из описания: например "
+        "'зеленая каменная тарелка', а вероятные названия материала вроде 'оникс' "
+        "или 'малахит' добавляй только в дополнительные search_queries. "
+        "Для рассказа про зеленую тарелку из зеленого камня с кольцами суть запроса: "
+        "'зеленая каменная тарелка'. "
+        "search_queries: 1-3 коротких варианта для поиска в БД; не выдумывай бренд. "
+        "Если в запросе есть цена, перенеси ее в min_price/max_price числом в UZS."
+    )
+
+
 def _product_for_prompt(product: ProductDTO) -> dict[str, Any]:
     return {
         "id": product.id,
@@ -328,6 +468,97 @@ def _parse_search_expansions(
         if len(expansions) >= max_queries:
             break
     return expansions
+
+
+def _query_needs_understanding(query: str) -> bool:
+    tokens = _tokens(query)
+    if len(tokens) >= 14:
+        return True
+    normalized = query.casefold()
+    if len(query) >= 90:
+        return True
+    sentence_marks = normalized.count(".") + normalized.count("!") + normalized.count("?")
+    return sentence_marks >= 1 and bool(_NARRATIVE_MARKER_RE.search(normalized))
+
+
+def _local_query_understanding(query: str) -> SearchQueryUnderstanding:
+    tokens = _tokens(query)
+    useful: list[str] = []
+    seen: set[str] = set()
+    for token in tokens:
+        normalized = _NARRATIVE_TOKEN_ALIASES.get(token, token)
+        if normalized in _NARRATIVE_STOP_TOKENS or normalized.isdigit():
+            continue
+        if len(normalized) <= 2 and normalized not in {"v"}:
+            continue
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        useful.append(normalized)
+
+    product_tokens = [token for token in useful if token in _PRODUCT_OBJECT_TOKENS]
+    color_tokens = [token for token in useful if token in _COLOR_TOKENS]
+    material_tokens = [token for token in useful if token in _MATERIAL_TOKENS]
+    descriptor_tokens = [
+        token
+        for token in useful
+        if token not in {*product_tokens, *color_tokens, *material_tokens}
+    ]
+
+    primary_parts = [*color_tokens[:1], *product_tokens[:1], *material_tokens[:1]]
+    if not primary_parts:
+        primary_parts = useful[:6]
+    elif not product_tokens and descriptor_tokens:
+        primary_parts.append(descriptor_tokens[0])
+    primary_query = " ".join(primary_parts) or query
+
+    extra_queries = [SearchExpansion(primary_query)]
+    if product_tokens and color_tokens and material_tokens:
+        extra_queries.append(
+            SearchExpansion(" ".join([product_tokens[0], color_tokens[0], material_tokens[0]]))
+        )
+    if product_tokens and color_tokens:
+        extra_queries.append(SearchExpansion(" ".join([color_tokens[0], product_tokens[0]])))
+    if "камень" in material_tokens and product_tokens and color_tokens:
+        for stone in ("оникс", "малахит"):
+            extra_queries.append(SearchExpansion(" ".join([product_tokens[0], stone])))
+            extra_queries.append(
+                SearchExpansion(" ".join([color_tokens[0], product_tokens[0], stone]))
+            )
+
+    return SearchQueryUnderstanding(
+        query=primary_query,
+        search_queries=_dedupe_expansions(
+            extra_queries,
+            max_queries=3,
+        ),
+        source="local",
+    )
+
+
+def _dedupe_expansions(
+    expansions: list[SearchExpansion],
+    *,
+    max_queries: int | None = None,
+) -> list[SearchExpansion]:
+    deduped: list[SearchExpansion] = []
+    seen: set[str] = set()
+    for expansion in expansions:
+        query = _clean_query(expansion.query)
+        key = query.casefold()
+        if not query or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(
+            SearchExpansion(
+                query=query,
+                min_price=expansion.min_price,
+                max_price=expansion.max_price,
+            )
+        )
+        if max_queries is not None and len(deduped) >= max_queries:
+            break
+    return deduped
 
 
 def _is_quota_exhausted_response(*, status: int, body: str) -> bool:
@@ -401,6 +632,15 @@ def _clean_price(value: Any) -> int | None:
     return min(parsed, 1_000_000_000)
 
 
+def _compact_text(value: Any, max_length: int) -> str:
+    if not isinstance(value, str):
+        return ""
+    value = " ".join(value.split())
+    if len(value) <= max_length:
+        return value
+    return value[: max_length - 1].rstrip() + "…"
+
+
 def _short(value: str | None, max_length: int) -> str | None:
     if not value:
         return None
@@ -408,3 +648,159 @@ def _short(value: str | None, max_length: int) -> str | None:
     if len(value) <= max_length:
         return value
     return value[: max_length - 1].rstrip() + "..."
+
+
+def _tokens(value: str) -> list[str]:
+    return re.findall(r"[0-9a-zа-яё]+", value.casefold())
+
+
+_NARRATIVE_MARKER_RE = re.compile(
+    r"\b(?:я|мы|видел\w*|увидел\w*|хочу|хотел\w*|нужн\w*|похож\w*|"
+    r"не\s+знаю|как\s+то|когда|где|помню)\b",
+    re.IGNORECASE,
+)
+
+_NARRATIVE_STOP_TOKENS = {
+    "а",
+    "бы",
+    "был",
+    "была",
+    "были",
+    "было",
+    "в",
+    "во",
+    "где",
+    "для",
+    "домой",
+    "его",
+    "ее",
+    "её",
+    "если",
+    "за",
+    "и",
+    "из",
+    "или",
+    "интересного",
+    "как",
+    "какой",
+    "когда",
+    "которую",
+    "который",
+    "которым",
+    "красивая",
+    "красивое",
+    "красивой",
+    "красивую",
+    "красивый",
+    "мне",
+    "мы",
+    "на",
+    "не",
+    "но",
+    "он",
+    "она",
+    "оно",
+    "очень",
+    "похожий",
+    "похожую",
+    "похожая",
+    "помню",
+    "с",
+    "себе",
+    "словно",
+    "так",
+    "там",
+    "то",
+    "турции",
+    "увидел",
+    "увидела",
+    "хотел",
+    "хотела",
+    "хочу",
+    "что",
+    "это",
+    "эта",
+    "эту",
+    "я",
+}
+
+_NARRATIVE_TOKEN_ALIASES = {
+    "камня": "камень",
+    "камнем": "камень",
+    "каменная": "камень",
+    "каменной": "камень",
+    "каменную": "камень",
+    "каменный": "камень",
+    "тарелка": "тарелка",
+    "тарелке": "тарелка",
+    "тарелки": "тарелка",
+    "тарелкой": "тарелка",
+    "тарелку": "тарелка",
+    "зеленого": "зеленая",
+    "зеленой": "зеленая",
+    "зеленую": "зеленая",
+    "зеленый": "зеленая",
+    "зелёного": "зеленая",
+    "зелёной": "зеленая",
+    "зелёную": "зеленая",
+    "зелёный": "зеленая",
+}
+
+_PRODUCT_OBJECT_TOKENS = {
+    "ботинки",
+    "брюки",
+    "ваза",
+    "кружка",
+    "куртка",
+    "лампа",
+    "ноутбук",
+    "платье",
+    "постер",
+    "рубашка",
+    "светильник",
+    "свитер",
+    "смартфон",
+    "стол",
+    "стул",
+    "сумка",
+    "тарелка",
+    "телефон",
+    "чашка",
+    "чехол",
+}
+
+_COLOR_TOKENS = {
+    "бежевый",
+    "белая",
+    "белый",
+    "голубой",
+    "желтая",
+    "желтый",
+    "зеленая",
+    "зеленый",
+    "коричневый",
+    "красная",
+    "красный",
+    "розовый",
+    "серая",
+    "серый",
+    "синий",
+    "черная",
+    "черный",
+}
+
+_MATERIAL_TOKENS = {
+    "дерево",
+    "золото",
+    "камень",
+    "керамика",
+    "кожа",
+    "металл",
+    "мрамор",
+    "оникс",
+    "пластик",
+    "серебро",
+    "стекло",
+    "ткань",
+    "фарфор",
+}

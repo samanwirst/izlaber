@@ -22,7 +22,12 @@ from bot.keyboards.main_menu import is_more_button_text, main_menu_keyboard, mor
 from bot.keyboards.product import product_card_keyboard
 from bot.locales import format_message, language_from_message
 from bot.services.ai_audio import transcribe_voice_message
-from bot.services.ai_reranker import SearchExpansion, rank_products, rerank_products
+from bot.services.ai_reranker import (
+    SearchExpansion,
+    rank_products,
+    rerank_products,
+    understand_search_query,
+)
 from bot.services.ai_runtime import ai_runtime_state
 from bot.services.ai_vision import (
     PhotoSearchQuery,
@@ -983,6 +988,36 @@ async def _run_text_search(
         input_type=input_type,
         query=query,
     )
+    original_query = query
+    understanding = await understand_search_query(query=query, config=config)
+    if understanding.query and understanding.query != query:
+        query = understanding.query
+        logger.info(
+            "Understood text search query %r as %r via %s.",
+            original_query,
+            query,
+            understanding.source,
+        )
+        await track_message_event(
+            config=config,
+            message=message,
+            event_type="search_query_understood",
+            language_code=language,
+            input_type=input_type,
+            query=query,
+            metadata={
+                "original_query": original_query,
+                "source": understanding.source,
+                "search_queries": [
+                    {
+                        "query": expansion.query,
+                        "min_price": expansion.min_price,
+                        "max_price": expansion.max_price,
+                    }
+                    for expansion in understanding.search_queries
+                ],
+            },
+        )
     ranked_products = await _load_ranked_candidates(
         query=query,
         candidate_offset=0,
@@ -993,6 +1028,23 @@ async def _run_text_search(
     if ranked_products is None:
         return
     candidate_offset = len(ranked_products)
+    if understanding.source != "original" and _local_results_need_ai(
+        query,
+        ranked_products,
+        min_results=config.product_search_limit,
+    ):
+        expanded_products = await _load_understanding_expanded_products(
+            expansions=understanding.search_queries[1:],
+            config=config,
+        )
+        if expanded_products:
+            merged_products = _merge_unique_products(ranked_products, expanded_products)
+            if len(merged_products) > len(ranked_products):
+                ranked_products = await rerank_products(
+                    query=query,
+                    products=merged_products,
+                    config=config,
+                )
     sponsored_products = await _load_sponsored_products(
         query=query,
         language_code=language,
@@ -1005,7 +1057,7 @@ async def _run_text_search(
         )
     if not ranked_products and not sponsored_products:
         backfilled = await _request_search_backfill_and_wait(
-            queries=[query],
+            queries=[expansion.query for expansion in understanding.search_queries] or [query],
             config=config,
             message=message,
             source=f"bot_{input_type}_search_miss",
@@ -1313,6 +1365,33 @@ async def _load_expanded_products(
                 error,
             )
     return products
+
+
+async def _load_understanding_expanded_products(
+    *,
+    expansions: list[SearchExpansion],
+    config: Config,
+) -> list[ProductDTO]:
+    if not expansions:
+        return []
+    try:
+        async with ServerAPIClient(
+            config.server_api_base_url,
+            config.bot_api_key,
+            timeout=config.server_api_timeout,
+        ) as client:
+            return await _load_expanded_products(
+                client=client,
+                expansions=expansions,
+                config=config,
+            )
+    except ServerAPIError as error:
+        logger.warning(
+            "Understood query expansion failed for %r: %s",
+            [expansion.query for expansion in expansions],
+            error,
+        )
+        return []
 
 
 async def _load_sponsored_products(
