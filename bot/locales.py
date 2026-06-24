@@ -79,7 +79,9 @@ LOCALES: dict[str, LocaleCopy] = {
                 "foto yuboring yoki brend, rang, o'lcham yoxud kategoriyani ko'rsating."
             ),
             "found_intro": ("«{query}» bo'yicha kartochkalar topildi. Birinchi {count} ta natija:"),
-            "sponsored_found_intro": "Reklama taklifi. U odatiy natijalardan alohida ko'rsatiladi:",
+            "sponsored_found_intro": (
+                "<i>Reklama taklifi</i>. U odatiy natijalardan alohida ko'rsatiladi:"
+            ),
             "catalog_unavailable": "Katalog hozir ishlamayapti. Keyinroq urinib ko'ring.",
             "rate_limited": (
                 "Juda ko'p so'rov yubordingiz. Iltimos, {retry_after}dan keyin urinib ko'ring."
@@ -90,8 +92,19 @@ LOCALES: dict[str, LocaleCopy] = {
             "search_in_progress": (
                 "Oldingi qidiruv hali tugamadi. Iltimos, natijani kuting."
             ),
+            "search_timeout": (
+                "Qidiruv juda uzoq davom etdi. So'rovni soddaroq yozing yoki "
+                "keyinroq urinib ko'ring."
+            ),
+            "unknown_command": (
+                "Bunday buyruq yo'q. Mahsulot nomini yozing, foto yoki ovoz yuboring."
+            ),
             "guest_need_query_title": "Nimani qidiramiz?",
-            "guest_need_query_text": ("Bot nomi yoniga mahsulot yozing, masalan: @bot iphone 15."),
+            "guest_need_query_text": (
+                "Bot nomi yoniga mahsulot yozing, masalan: @izlaber_bot iphone 15."
+            ),
+            "guest_search_started_title": "Qidiryapman...",
+            "guest_search_started_text": "Eng yaxshi variantlarni tanlayapman...",
             "guest_catalog_unavailable_title": "Katalog vaqtincha ishlamayapti",
             "guest_catalog_unavailable_text": (
                 "Hozir katalogdan mahsulot olib bo'lmadi. Keyinroq urinib ko'ring."
@@ -214,7 +227,7 @@ LOCALES: dict[str, LocaleCopy] = {
         product_labels={
             "price": "Narx",
             "old_price": "Avvalgi narx",
-            "rating": "reyting",
+            "rating": "Reyting",
             "reviews_one": "sharh",
             "reviews_few": "sharh",
             "reviews_many": "sharh",
@@ -281,7 +294,7 @@ LOCALES: dict[str, LocaleCopy] = {
             ),
             "found_intro": "Нашел карточки по запросу «{query}». Показываю первые {count}:",
             "sponsored_found_intro": (
-                "Рекламное предложение. Оно показывается отдельно от обычной выдачи:"
+                "<i>Рекламное предложение</i>. Оно показывается отдельно от обычной выдачи:"
             ),
             "catalog_unavailable": "Каталог сейчас недоступен. Попробуйте позже.",
             "rate_limited": ("Слишком много запросов. Попробуйте снова через {retry_after}."),
@@ -292,10 +305,19 @@ LOCALES: dict[str, LocaleCopy] = {
                 "Предыдущий поиск еще выполняется. Дождитесь результата, "
                 "затем отправьте новый запрос."
             ),
+            "search_timeout": (
+                "Поиск занял слишком много времени. Попробуйте упростить запрос "
+                "или повторить позже."
+            ),
+            "unknown_command": (
+                "Такой команды нет. Напишите название товара, отправьте фото или голос."
+            ),
             "guest_need_query_title": "Что искать?",
             "guest_need_query_text": (
-                "Напишите товар рядом с упоминанием бота, например: @bot iphone 15."
+                "Напишите товар рядом с упоминанием бота, например: @izlaber_bot iphone 15."
             ),
+            "guest_search_started_title": "Ищу...",
+            "guest_search_started_text": "Выбираю лучшие варианты...",
             "guest_catalog_unavailable_title": "Каталог временно недоступен",
             "guest_catalog_unavailable_text": (
                 "Не смог получить товары из каталога. Попробуйте повторить запрос позже."
@@ -419,7 +441,7 @@ LOCALES: dict[str, LocaleCopy] = {
         product_labels={
             "price": "Цена",
             "old_price": "Старая цена",
-            "rating": "рейтинг",
+            "rating": "Рейтинг",
             "reviews_one": "отзыв",
             "reviews_few": "отзыва",
             "reviews_many": "отзывов",
@@ -487,7 +509,7 @@ LOCALES: dict[str, LocaleCopy] = {
             ),
             "found_intro": "Found product cards for “{query}”. Showing the first {count}:",
             "sponsored_found_intro": (
-                "Sponsored offer. It is shown separately from regular results:"
+                "<i>Sponsored offer</i>. It is shown separately from regular results:"
             ),
             "catalog_unavailable": "The catalog is unavailable right now. Try again later.",
             "rate_limited": "Too many requests. Try again in {retry_after}.",
@@ -498,10 +520,18 @@ LOCALES: dict[str, LocaleCopy] = {
                 "The previous search is still running. Wait for the result before sending "
                 "a new query."
             ),
+            "search_timeout": (
+                "Search took too long. Try a simpler query or repeat it later."
+            ),
+            "unknown_command": (
+                "Unknown command. Type a product name, send a photo, or send a voice message."
+            ),
             "guest_need_query_title": "What should I search?",
             "guest_need_query_text": (
-                "Write a product next to the bot mention, for example: @bot iphone 15."
+                "Write a product next to the bot mention, for example: @izlaber_bot iphone 15."
             ),
+            "guest_search_started_title": "Searching...",
+            "guest_search_started_text": "Picking the best matches...",
             "guest_catalog_unavailable_title": "Catalog temporarily unavailable",
             "guest_catalog_unavailable_text": (
                 "Could not load products from the catalog. Try again later."
@@ -622,7 +652,7 @@ LOCALES: dict[str, LocaleCopy] = {
         product_labels={
             "price": "Price",
             "old_price": "Old price",
-            "rating": "rating",
+            "rating": "Rating",
             "reviews_one": "review",
             "reviews_few": "reviews",
             "reviews_many": "reviews",

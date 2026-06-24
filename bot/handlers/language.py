@@ -70,7 +70,7 @@ async def choose_language(callback: CallbackQuery, config: Config) -> None:
 
 def _language_label(language_code: str) -> str:
     if language_code == "uz":
-        return "O'zbek"
+        return "🇺🇿 O'zbek"
     if language_code == "ru":
-        return "Русский"
-    return "English"
+        return "🇷🇺 Русский"
+    return "🇺🇸 English"

@@ -55,6 +55,8 @@ Analytics variables:
 | `BOT_ANALYTICS_TIMEOUT` | Short timeout for analytics writes so user search is not blocked. |
 | `BOT_PUBLIC_BASE_URL` | Public server origin used to generate product click redirect links. |
 | `BOT_SPONSORED_SEARCH_LIMIT` | Sponsored product cards per first search page. Set `0` to disable sponsored placements. |
+| `BOT_SEARCH_TIMEOUT_SECONDS` | Overall per-search user-facing timeout. Keep near `60` in production so “searching” messages do not hang. |
+| `BOT_MARKETPLACE_CUSTOM_EMOJI_UZUM`, `BOT_MARKETPLACE_CUSTOM_EMOJI_WILDBERRIES` | Optional Telegram custom emoji IDs for marketplace logo prefixes in product card titles. Leave empty until real IDs are available. |
 | `ANALYTICS_COOKIE_ENABLED` | Enables first-party click attribution cookie on redirect endpoint. |
 | `ANALYTICS_COOKIE_NAME` | Cookie name, default `izlaber_cid`. |
 | `ANALYTICS_HASH_IP` | Stores salted IP hashes for redirect events when enabled. |

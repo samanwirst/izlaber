@@ -79,9 +79,9 @@ def test_keyboards_are_localized():
     assert ru_keyboard.keyboard[0][0].text == "Показать ещё"
     assert isinstance(en_keyboard, ReplyKeyboardRemove)
     assert [button.text for button in language_keyboard.inline_keyboard[0]] == [
-        "O'zbek",
-        "Русский",
-        "English",
+        "🇺🇿 O'zbek",
+        "🇷🇺 Русский",
+        "🇺🇸 English",
     ]
     assert consent_keyboard.keyboard[0][0].text == "✅ Согласен, начать поиск"
     assert len(consent_keyboard.keyboard) == 1

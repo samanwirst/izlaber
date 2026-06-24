@@ -343,26 +343,60 @@ async def guest_search_uzum(message: Message, config: Config) -> None:
             text=format_message("guest_need_query_text", language),
         )
         return
-
-    ranked_products = await _load_ranked_candidates(
-        query=query,
-        candidate_offset=0,
-        config=config,
-        message=None,
-    )
-    if ranked_products is None:
+    if query.startswith("/"):
         await _answer_guest_query(
             message,
             guest_query_id=guest_query_id,
+            title=format_message("guest_need_query_title", language, html=False),
+            text=format_message("unknown_command", language),
+        )
+        return
+
+    inline_message_id = await _answer_guest_query(
+        message,
+        guest_query_id=guest_query_id,
+        title=format_message("guest_search_started_title", language, html=False),
+        text=format_message("guest_search_started_text", language),
+    )
+    try:
+        ranked_products = await asyncio.wait_for(
+            _load_ranked_candidates(
+                query=query,
+                candidate_offset=0,
+                config=config,
+                message=None,
+            ),
+            timeout=config.search_timeout_seconds,
+        )
+    except TimeoutError:
+        logger.warning(
+            "Guest search timed out for query %r after %.1fs",
+            query,
+            config.search_timeout_seconds,
+        )
+        await _finish_guest_query(
+            message,
+            guest_query_id=guest_query_id,
+            inline_message_id=inline_message_id,
+            title=format_message("guest_search_started_title", language, html=False),
+            text=format_message("search_timeout", language),
+        )
+        return
+    if ranked_products is None:
+        await _finish_guest_query(
+            message,
+            guest_query_id=guest_query_id,
+            inline_message_id=inline_message_id,
             title=format_message("guest_catalog_unavailable_title", language, html=False),
             text=format_message("guest_catalog_unavailable_text", language),
         )
         return
 
     products = ranked_products[: config.product_search_limit]
-    await _answer_guest_query(
+    await _finish_guest_query(
         message,
         guest_query_id=guest_query_id,
+        inline_message_id=inline_message_id,
         title=_guest_result_title(query, products, language),
         text=render_products(products, query, language),
         description=_guest_result_description(products, language),
@@ -395,7 +429,22 @@ async def search_more(message: Message, config: Config) -> None:
         metadata={"offset": session.offset, "candidate_offset": session.candidate_offset},
     )
     status_message = await message.answer(format_message("search_more_processing", language))
-    products = await _next_products(session=session, config=config, message=message)
+    try:
+        products = await asyncio.wait_for(
+            _next_products(session=session, config=config, message=message),
+            timeout=config.search_timeout_seconds,
+        )
+    except TimeoutError:
+        search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
+        await _handle_search_timeout(
+            message=message,
+            config=config,
+            status_message=status_message,
+            language=language,
+            query=session.query,
+            input_type="more",
+        )
+        return
     if products is None:
         await _replace_status_message(
             status_message,
@@ -473,6 +522,37 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
         return
 
     status_message = await message.answer(format_message("photo_processing", language))
+    try:
+        await asyncio.wait_for(
+            _run_photo_search(
+                message=message,
+                config=config,
+                language=language,
+                image_bytes=image_bytes,
+                status_message=status_message,
+            ),
+            timeout=config.search_timeout_seconds,
+        )
+    except TimeoutError:
+        search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
+        await _handle_search_timeout(
+            message=message,
+            config=config,
+            status_message=status_message,
+            language=language,
+            query=message.caption or "photo",
+            input_type="photo",
+        )
+
+
+async def _run_photo_search(
+    *,
+    message: Message,
+    config: Config,
+    language: str,
+    image_bytes: bytes,
+    status_message: Message,
+) -> None:
     if _photo_search_available(config):
         await message.bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
         photo_query = await identify_product_photo(
@@ -710,7 +790,7 @@ async def search_uzum_by_voice(message: Message, config: Config) -> None:
         )
         return
 
-    await _run_text_search(
+    await _run_text_search_with_timeout(
         message=message,
         config=config,
         query=transcript,
@@ -722,12 +802,34 @@ async def search_uzum_by_voice(message: Message, config: Config) -> None:
     )
 
 
+def _is_unknown_slash_command(message: Message) -> bool:
+    text = (message.text or "").strip()
+    return text.startswith("/")
+
+
+@router.message(_is_unknown_slash_command)
+async def unknown_slash_command(message: Message, config: Config) -> None:
+    language = language_from_message(message)
+    await track_message_event(
+        config=config,
+        message=message,
+        event_type="unknown_command",
+        language_code=language,
+        input_type="command",
+        query=(message.text or "").strip(),
+    )
+    await message.answer(
+        format_message("unknown_command", language),
+        reply_markup=main_menu_keyboard(language),
+    )
+
+
 @router.message(F.text)
 async def search_uzum(message: Message, config: Config) -> None:
     query = (message.text or "").strip()
     language = language_from_message(message)
     status_message = await message.answer(format_message("search_processing", language))
-    await _run_text_search(
+    await _run_text_search_with_timeout(
         message=message,
         config=config,
         query=query,
@@ -1235,6 +1337,79 @@ async def _load_sponsored_products(
     except ServerAPIError as error:
         logger.warning("Sponsored product search failed for query %r: %s", query, error)
         return []
+
+
+async def _run_text_search_with_timeout(
+    *,
+    message: Message,
+    config: Config,
+    query: str,
+    input_type: str = "text",
+    status_message: Message | None = None,
+    empty_key: str = "empty_query",
+    no_results_key: str = "no_results",
+    intro_key: str = "found_intro",
+) -> None:
+    language = language_from_message(message)
+    try:
+        await asyncio.wait_for(
+            _run_text_search(
+                message=message,
+                config=config,
+                query=query,
+                input_type=input_type,
+                status_message=status_message,
+                empty_key=empty_key,
+                no_results_key=no_results_key,
+                intro_key=intro_key,
+            ),
+            timeout=config.search_timeout_seconds,
+        )
+    except TimeoutError:
+        search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
+        await _handle_search_timeout(
+            message=message,
+            config=config,
+            status_message=status_message,
+            language=language,
+            query=query,
+            input_type=input_type,
+        )
+
+
+async def _handle_search_timeout(
+    *,
+    message: Message,
+    config: Config,
+    status_message: Message | None,
+    language: str,
+    query: str,
+    input_type: str,
+) -> None:
+    logger.warning(
+        "Search timed out for input_type=%s query=%r after %.1fs",
+        input_type,
+        query,
+        config.search_timeout_seconds,
+    )
+    await track_message_event(
+        config=config,
+        message=message,
+        event_type="search_timeout",
+        language_code=language,
+        input_type=input_type,
+        query=query,
+    )
+    text = format_message("search_timeout", language)
+    if status_message is not None:
+        await _replace_status_message(
+            status_message,
+            text,
+            language=language,
+            reply_markup=main_menu_keyboard(language),
+        )
+        return
+    await message.answer(text, reply_markup=main_menu_keyboard(language))
 
 
 async def _request_search_backfill_and_wait(
@@ -1990,7 +2165,12 @@ async def _send_products(
         )
         product_url = product_for_render.tracking_url or product_for_render.canonical_url
         keyboard = product_card_keyboard(language_code, product_url=product_url)
-        caption = render_product_card(product_for_render, index, language_code)
+        caption = render_product_card(
+            product_for_render,
+            index,
+            language_code,
+            marketplace_custom_emoji_ids=config.marketplace_custom_emoji_ids,
+        )
         if product.cover_image_url:
             photo = await _telegram_cover_photo(product.cover_image_url, config)
             try:
@@ -2127,7 +2307,7 @@ async def _answer_guest_query(
     text: str,
     description: str | None = None,
     thumbnail_url: str | None = None,
-) -> None:
+) -> str | None:
     result = InlineQueryResultArticle(
         id=f"uzum-{uuid4().hex}",
         title=title[:64],
@@ -2140,9 +2320,57 @@ async def _answer_guest_query(
         ),
     )
     try:
-        await message.bot.answer_guest_query(guest_query_id=guest_query_id, result=result)
+        sent_message = await message.bot.answer_guest_query(
+            guest_query_id=guest_query_id,
+            result=result,
+        )
     except TelegramAPIError as error:
         logger.warning("Telegram rejected guest query answer %s: %s", guest_query_id, error)
+        return None
+    return sent_message.inline_message_id
+
+
+async def _edit_guest_message(
+    message: Message,
+    *,
+    inline_message_id: str | None,
+    text: str,
+) -> None:
+    if not inline_message_id:
+        logger.warning("Cannot edit guest result: inline_message_id is empty.")
+        return
+    try:
+        await message.bot.edit_message_text(
+            inline_message_id=inline_message_id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True,
+        )
+    except TelegramAPIError as error:
+        logger.warning("Telegram rejected guest result edit %s: %s", inline_message_id, error)
+
+
+async def _finish_guest_query(
+    message: Message,
+    *,
+    guest_query_id: str,
+    inline_message_id: str | None,
+    title: str,
+    text: str,
+    description: str | None = None,
+    thumbnail_url: str | None = None,
+) -> None:
+    if inline_message_id:
+        await _edit_guest_message(message, inline_message_id=inline_message_id, text=text)
+        return
+    await _answer_guest_query(
+        message,
+        guest_query_id=guest_query_id,
+        title=title,
+        text=text,
+        description=description,
+        thumbnail_url=thumbnail_url,
+    )
 
 
 def _guest_result_title(query: str, products: list[ProductDTO], language_code: str) -> str:

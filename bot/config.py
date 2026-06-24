@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from os import getenv
 
 from dotenv import load_dotenv
@@ -76,6 +76,8 @@ class Config:
     search_backfill_poll_seconds: float = 2.0
     search_backfill_limit: int = 30
     search_backfill_max_queries: int = 3
+    search_timeout_seconds: float = 60.0
+    marketplace_custom_emoji_ids: dict[str, str] = field(default_factory=dict)
 
 
 def load_config() -> Config:
@@ -217,6 +219,8 @@ def load_config() -> Config:
         ),
         search_backfill_limit=max(1, int(getenv("BOT_SEARCH_BACKFILL_LIMIT", "30"))),
         search_backfill_max_queries=max(1, int(getenv("BOT_SEARCH_BACKFILL_MAX_QUERIES", "3"))),
+        search_timeout_seconds=max(5.0, float(getenv("BOT_SEARCH_TIMEOUT_SECONDS", "60"))),
+        marketplace_custom_emoji_ids=_marketplace_custom_emoji_ids(),
     )
 
 
@@ -252,3 +256,11 @@ def _photo_detail(value: str) -> str:
     if normalized in {"low", "high", "auto"}:
         return normalized
     return "low"
+
+
+def _marketplace_custom_emoji_ids() -> dict[str, str]:
+    ids = {
+        "uzum": getenv("BOT_MARKETPLACE_CUSTOM_EMOJI_UZUM", "").strip(),
+        "wildberries": getenv("BOT_MARKETPLACE_CUSTOM_EMOJI_WILDBERRIES", "").strip(),
+    }
+    return {code: emoji_id for code, emoji_id in ids.items() if emoji_id}

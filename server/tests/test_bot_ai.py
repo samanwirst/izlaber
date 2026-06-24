@@ -4,15 +4,17 @@ from datetime import datetime
 from uuid import UUID
 
 import pytest
-from aiogram.types import Chat, Message, PhotoSize, Voice
+from aiogram.types import Chat, Message, PhotoSize, User, Voice
 from django.conf import settings
 
 from bot.config import BotConfig, Config, _policy_url
+from bot.handlers import common as common_handlers
 from bot.handlers.admin import _format_usd, _is_openai_status_admin
 from bot.handlers.common import (
     _cover_image_to_jpeg,
     _cover_url_needs_jpeg_upload,
     _expansion_filters,
+    _is_unknown_slash_command,
     _local_results_need_ai,
     _merge_unique_products,
     _photo_candidate_query_limit,
@@ -23,6 +25,7 @@ from bot.handlers.common import (
     _photo_text_fallback_products,
     _query_requirements,
     _replace_status_message,
+    _run_text_search_with_timeout,
     _search_expansion_allowed,
     _select_photo_for_vision,
     _source_product_ids_from_text,
@@ -119,8 +122,34 @@ def test_product_card_renders_sponsored_label():
 
     card = render_product_card(item, 1, "ru")
 
-    assert "Рекламное предложение" in card
+    assert card.startswith("<i>Рекламное предложение</i>\n")
     assert "Sponsored product" in card
+
+
+def test_product_card_uses_production_layout_without_old_price_or_marketplace():
+    item = replace(
+        product(123, "Phone case"),
+        current_price="25000.00",
+        old_price="40000.00",
+        rating="4.90",
+        reviews_count=17,
+        category_path_text="Аксессуары",
+    )
+
+    card = render_product_card(
+        item,
+        1,
+        "ru",
+        marketplace_custom_emoji_ids={"uzum": "5368324170671202286"},
+    )
+
+    assert '<tg-emoji emoji-id="5368324170671202286">' in card
+    assert '<a href="https://uzum.uz/ru/product/test-123">Phone case</a></b>\n\nЦена:' in card
+    assert "Старая цена" not in card
+    assert "40 000" not in card
+    assert "Маркетплейс" not in card
+    assert "Uzum Market" not in card
+    assert "Рейтинг 4.90, 17 отзывов" in card
 
 
 def test_webp_product_cover_is_converted_to_jpeg_for_telegram():
@@ -453,6 +482,61 @@ def test_guest_query_strips_bot_username():
     assert _strip_bot_username("@MarketBot iphone 15", "marketbot") == "iphone 15"
     assert _strip_bot_username("найди @MarketBot ноутбук", "marketbot") == "найди ноутбук"
     assert _strip_bot_username("чехол @otherbot", "marketbot") == "чехол @otherbot"
+
+
+def test_unknown_slash_command_is_not_treated_as_search():
+    message = Message(
+        message_id=1,
+        date=datetime.now(),
+        chat=Chat(id=10, type="private"),
+        text="/bot аниме постер",
+    )
+
+    assert _is_unknown_slash_command(message) is True
+
+
+@pytest.mark.asyncio
+async def test_text_search_timeout_replaces_status_message(monkeypatch):
+    async def slow_search(**_kwargs):
+        await asyncio.sleep(0.05)
+
+    replacements: list[str] = []
+    events: list[str] = []
+
+    async def fake_replace(_status_message, text, **_kwargs):
+        replacements.append(text)
+
+    async def fake_track(**kwargs):
+        events.append(kwargs["event_type"])
+
+    monkeypatch.setattr(common_handlers, "_run_text_search", slow_search)
+    monkeypatch.setattr(common_handlers, "_replace_status_message", fake_replace)
+    monkeypatch.setattr(common_handlers, "track_message_event", fake_track)
+
+    message = Message(
+        message_id=1,
+        date=datetime.now(),
+        chat=Chat(id=10, type="private"),
+        from_user=User(id=1, is_bot=False, first_name="Test", language_code="en"),
+        text="iphone",
+    )
+    status_message = Message(
+        message_id=2,
+        date=datetime.now(),
+        chat=Chat(id=10, type="private"),
+        text="searching",
+    )
+    config = Config(bot=BotConfig(token="test"), search_timeout_seconds=0.01)
+
+    await _run_text_search_with_timeout(
+        message=message,
+        config=config,
+        query="iphone",
+        status_message=status_message,
+    )
+
+    assert events == ["search_timeout"]
+    assert replacements == ["Search took too long. Try a simpler query or repeat it later."]
 
 
 def test_ai_rank_keeps_unranked_products_after_ranked_ids():
@@ -854,6 +938,8 @@ def test_config_exposes_rate_limit_defaults():
     assert config.search_rate_limit_max_events == 12
     assert config.ai_rate_limit_max_events == 12
     assert config.ai_rate_limit_window_seconds == 3600.0
+    assert config.search_timeout_seconds == 60.0
+    assert config.marketplace_custom_emoji_ids == {}
 
 
 def test_consent_versions_match_between_bot_and_server_defaults():

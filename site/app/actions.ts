@@ -26,6 +26,11 @@ const INITIAL_BROADCAST_STATE: BroadcastActionState = {
   message: "",
 };
 
+type TelegramBroadcastMessage = {
+  text: string;
+  parseMode?: "HTML";
+};
+
 export async function createSponsoredCampaignAction(formData: FormData) {
   await requireDashboardAuth();
   const payload = {
@@ -76,10 +81,10 @@ export async function sendBroadcastAction(
   }
 
   const message = broadcastMessageText(text, messageType);
-  if (message.length > TELEGRAM_MESSAGE_LIMIT) {
+  if (message.text.length > TELEGRAM_MESSAGE_LIMIT) {
     return {
       status: "error",
-      message: `Сообщение слишком длинное: ${message.length}/${TELEGRAM_MESSAGE_LIMIT}.`,
+      message: `Сообщение слишком длинное: ${message.text.length}/${TELEGRAM_MESSAGE_LIMIT}.`,
     };
   }
 
@@ -101,7 +106,7 @@ export async function sendBroadcastAction(
     return { status: "error", message: "Нет активных пользователей с согласием." };
   }
 
-  const stats = await sendTelegramBroadcast({ token, chatIds, text: message });
+  const stats = await sendTelegramBroadcast({ token, chatIds, message });
 
   try {
     await createAnalyticsEvent({
@@ -158,11 +163,17 @@ function intField(formData: FormData, name: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function broadcastMessageText(text: string, messageType: "service" | "sponsored") {
+function broadcastMessageText(
+  text: string,
+  messageType: "service" | "sponsored",
+): TelegramBroadcastMessage {
   if (messageType === "service") {
-    return text;
+    return { text };
   }
-  return `Рекламное предложение\n\n${text}`;
+  return {
+    text: `<i>Рекламное предложение</i>\n\n${escapeTelegramHtml(text)}`,
+    parseMode: "HTML",
+  };
 }
 
 function uniqueTelegramIds(values: number[]) {
@@ -181,11 +192,11 @@ function uniqueTelegramIds(values: number[]) {
 async function sendTelegramBroadcast({
   token,
   chatIds,
-  text,
+  message,
 }: {
   token: string;
   chatIds: number[];
-  text: string;
+  message: TelegramBroadcastMessage;
 }) {
   let sent = 0;
   let failed = 0;
@@ -193,7 +204,7 @@ async function sendTelegramBroadcast({
   for (let index = 0; index < chatIds.length; index += TELEGRAM_BATCH_SIZE) {
     const batch = chatIds.slice(index, index + TELEGRAM_BATCH_SIZE);
     const results = await Promise.allSettled(
-      batch.map((chatId) => sendTelegramMessage({ token, chatId, text })),
+      batch.map((chatId) => sendTelegramMessage({ token, chatId, message })),
     );
     for (const result of results) {
       if (result.status === "fulfilled" && result.value) {
@@ -213,20 +224,24 @@ async function sendTelegramBroadcast({
 async function sendTelegramMessage({
   token,
   chatId,
-  text,
+  message,
 }: {
   token: string;
   chatId: number;
-  text: string;
+  message: TelegramBroadcastMessage;
 }) {
+  const payload: Record<string, unknown> = {
+    chat_id: chatId,
+    text: message.text,
+    disable_web_page_preview: false,
+  };
+  if (message.parseMode) {
+    payload.parse_mode = message.parseMode;
+  }
   const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      disable_web_page_preview: false,
-    }),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
     const body = await response.text();
@@ -238,4 +253,11 @@ async function sendTelegramMessage({
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function escapeTelegramHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }

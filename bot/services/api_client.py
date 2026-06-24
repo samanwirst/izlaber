@@ -288,8 +288,6 @@ def render_products(
             details.append(f"{product_label('rating', language_code)} {product.rating}")
         if product.reviews_count is not None:
             details.append(review_text(product.reviews_count, language_code))
-        if product.marketplace_name:
-            details.append(product.marketplace_name)
         suffix = f" - {escape(', '.join(details))}" if details else ""
         product_url = product.tracking_url or product.canonical_url
         lines.append(
@@ -298,32 +296,41 @@ def render_products(
     return "\n\n".join(lines)
 
 
-def render_product_card(product: ProductDTO, index: int, language_code: str | None = None) -> str:
+def render_product_card(
+    product: ProductDTO,
+    index: int,
+    language_code: str | None = None,
+    *,
+    marketplace_custom_emoji_ids: dict[str, str] | None = None,
+) -> str:
     product_url = product.tracking_url or product.canonical_url
-    lines = []
+    lines: list[str] = []
     if product.sponsored_campaign_id is not None:
-        lines.append(f"<b>{escape(product_label('sponsored', language_code))}</b>")
-    lines.append(f'<b>{index}. <a href="{escape(product_url)}">{escape(product.title)}</a></b>')
+        lines.append(f"<i>{escape(product_label('sponsored', language_code))}</i>")
+    logo = _marketplace_logo(product.marketplace_code, marketplace_custom_emoji_ids)
+    logo_prefix = f"{logo} " if logo else ""
+    lines.append(
+        f'<b>{index}. {logo_prefix}<a href="{escape(product_url)}">'
+        f"{escape(product.title)}</a></b>"
+    )
+
+    field_lines: list[str] = []
     if product.current_price:
         price = escape(_format_price(product.current_price, product.currency, language_code))
-        lines.append(f"{product_label('price', language_code)}: <b>{price}</b>")
-    if product.old_price:
-        old_price = escape(_format_price(product.old_price, product.currency, language_code))
-        lines.append(f"{product_label('old_price', language_code)}: {old_price}")
+        field_lines.append(f"{product_label('price', language_code)}: <b>{price}</b>")
     details = []
     if product.rating:
         details.append(f"{product_label('rating', language_code)} {product.rating}")
     if product.reviews_count is not None:
         details.append(review_text(product.reviews_count, language_code))
     if details:
-        lines.append(escape(", ".join(details)))
+        field_lines.append(escape(", ".join(details)))
     if product.category_path_text:
         category = escape(product.category_path_text)
-        lines.append(f"{product_label('category', language_code)}: {category}")
-    if product.marketplace_name:
-        lines.append(
-            f"{product_label('marketplace', language_code)}: {escape(product.marketplace_name)}"
-        )
+        field_lines.append(f"{product_label('category', language_code)}: {category}")
+    if field_lines:
+        lines.append("")
+        lines.extend(field_lines)
     lines.extend(["", f"<i>{escape(product_label('footer', language_code))}</i>"])
     return "\n".join(lines)
 
@@ -386,3 +393,16 @@ def _format_price(value: str, currency: str, language_code: str | None = None) -
     normalized = int(amount) if amount == amount.to_integral_value() else amount
     suffix = product_label("currency_uzs", language_code) if currency == "UZS" else currency
     return f"{normalized:,}".replace(",", " ") + f" {suffix}"
+
+
+def _marketplace_logo(
+    marketplace_code: str | None,
+    marketplace_custom_emoji_ids: dict[str, str] | None,
+) -> str:
+    if not marketplace_code or not marketplace_custom_emoji_ids:
+        return ""
+    custom_emoji_id = marketplace_custom_emoji_ids.get(marketplace_code.casefold())
+    if not custom_emoji_id:
+        return ""
+    fallback = {"uzum": "🛍", "wildberries": "🛒"}.get(marketplace_code.casefold(), "🛒")
+    return f'<tg-emoji emoji-id="{escape(custom_emoji_id)}">{fallback}</tg-emoji>'
