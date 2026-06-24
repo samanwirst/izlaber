@@ -45,10 +45,7 @@ def test_normalize_wildberries_product():
 
     assert product is not None
     assert product["source_product_id"] == "237194752"
-    assert product["canonical_url"] == (
-        "https://www.wildberries.uz/catalog/237194752/detail.aspx"
-        "?targetUrl=GP&size=373382862"
-    )
+    assert product["canonical_url"] == "https://www.wildberries.uz/catalog/237194752/detail.aspx"
     assert product["current_price"] == "213500"
     assert product["old_price"] == "806500"
     assert product["brand"] == "ENRIbase"
@@ -151,7 +148,6 @@ async def test_wildberries_search_backfill_upserts_products(monkeypatch):
     assert FakeStorage.upserted[0]["source_product_id"] == "945622805"
     assert FakeStorage.upserted[0]["canonical_url"] == (
         "https://www.wildberries.uz/catalog/945622805/detail.aspx"
-        "?targetUrl=SG&size=1422006848"
     )
     assert FakeStorage.upserted[0]["category"]["source_category_id"] == "search:snickers"
     assert FakeStorage.upserted[0]["raw_data"]["search_backfill"]["query"] == "snickers"
