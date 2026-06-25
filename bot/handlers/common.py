@@ -46,6 +46,7 @@ from bot.services.api_client import (
 )
 from bot.services.image_fingerprint import ImageFingerprintError, image_fingerprint
 from bot.services.search_state import SearchSession, search_state
+from bot.services.telegram_messages import direct_messages_topic_id
 
 router = Router(name="common")
 logger = logging.getLogger(__name__)
@@ -2899,7 +2900,7 @@ def _compact_whitespace(text: str) -> str:
 
 
 async def _send_guest_search_started_message(message: Message, language: str) -> Message | None:
-    topic_id = _direct_messages_topic_id(message)
+    topic_id = direct_messages_topic_id(message)
     try:
         return await message.answer(
             format_message("search_processing", language),
@@ -2909,12 +2910,6 @@ async def _send_guest_search_started_message(message: Message, language: str) ->
     except TelegramAPIError as error:
         logger.warning("Telegram rejected guest search status message: %s", error)
         return None
-
-
-def _direct_messages_topic_id(message: Message) -> int | None:
-    topic = getattr(message, "direct_messages_topic", None)
-    topic_id = getattr(topic, "topic_id", None)
-    return topic_id if isinstance(topic_id, int) else None
 
 
 async def _answer_guest_query(

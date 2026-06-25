@@ -12,6 +12,7 @@ from bot.keyboards.consent import is_consent_accept_text
 from bot.keyboards.main_menu import is_more_button_text
 from bot.locales import format_message, language_from_message, normalize_language_code
 from bot.services.rate_limit import RateLimitRule, rate_limiter, search_inflight_gate
+from bot.services.telegram_messages import answer_message
 
 GENERAL_SCOPE = "general"
 SEARCH_SCOPE = "search"
@@ -201,7 +202,7 @@ async def _send_rate_limit_notice(
         await event.answer(format_message(key, language, html=False, retry_after=retry_after))
         return
     if isinstance(event, Message):
-        await event.answer(text)
+        await answer_message(event, text)
 
 
 async def _send_search_in_progress_notice(event: TelegramObject) -> None:
@@ -212,7 +213,7 @@ async def _send_search_in_progress_notice(event: TelegramObject) -> None:
         await event.answer(format_message("search_in_progress", language, html=False))
         return
     if isinstance(event, Message):
-        await event.answer(text)
+        await answer_message(event, text)
 
 
 def _format_retry_after(seconds: int, language_code: str | None) -> str:

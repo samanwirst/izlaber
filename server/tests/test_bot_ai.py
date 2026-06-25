@@ -5,11 +5,12 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
-from aiogram.types import Chat, Message, PhotoSize, User, Voice
+from aiogram.types import Chat, DirectMessagesTopic, Message, PhotoSize, User, Voice
 from django.conf import settings
 
 from bot.config import BotConfig, Config, _policy_url
 from bot.handlers import common as common_handlers
+from bot.handlers import consent as consent_handlers
 from bot.handlers.admin import _format_usd, _is_openai_status_admin
 from bot.handlers.common import (
     _balance_products_by_marketplace,
@@ -37,7 +38,7 @@ from bot.handlers.common import (
 )
 from bot.keyboards.main_menu import more_results_keyboard
 from bot.middlewares import rate_limit as rate_limit_middleware
-from bot.middlewares.consent import _is_consent_event
+from bot.middlewares.consent import _is_consent_event, _send_consent_prompt
 from bot.middlewares.rate_limit import (
     AI_SCOPE,
     GENERAL_SCOPE,
@@ -597,6 +598,54 @@ def test_consent_middleware_only_allows_exact_consent_command():
     assert _is_consent_event(targeted_consent_message) is True
     assert _is_consent_event(accept_button_message) is True
     assert _is_consent_event(bypass_attempt) is False
+
+
+@pytest.mark.asyncio
+async def test_consent_prompt_uses_guest_direct_message_topic(monkeypatch):
+    answered: list[dict[str, object]] = []
+
+    async def fake_answer(self, text, **kwargs):
+        answered.append(kwargs)
+        return Message(message_id=99, date=datetime.now(), chat=self.chat, text=text)
+
+    monkeypatch.setattr(Message, "answer", fake_answer)
+
+    message = Message(
+        message_id=1,
+        date=datetime.now(),
+        chat=Chat(id=10, type="private"),
+        from_user=User(id=20, is_bot=False, first_name="Guest"),
+        direct_messages_topic=DirectMessagesTopic(topic_id=77),
+        text="@izlaber_bot зеленая ваза",
+    )
+
+    await _send_consent_prompt(message, Config(bot=BotConfig(token="test")))
+
+    assert answered
+    assert answered[0]["direct_messages_topic_id"] == 77
+
+
+@pytest.mark.asyncio
+async def test_consent_accept_success_uses_guest_direct_message_topic(monkeypatch):
+    answered: list[dict[str, object]] = []
+
+    async def fake_answer(self, text, **kwargs):
+        answered.append(kwargs)
+        return Message(message_id=99, date=datetime.now(), chat=self.chat, text=text)
+
+    monkeypatch.setattr(Message, "answer", fake_answer)
+
+    message = Message(
+        message_id=1,
+        date=datetime.now(),
+        chat=Chat(id=10, type="private"),
+        from_user=User(id=20, is_bot=False, first_name="Guest"),
+        direct_messages_topic=DirectMessagesTopic(topic_id=77),
+    )
+
+    await consent_handlers._send_accept_success(message, "ru")
+
+    assert [answer["direct_messages_topic_id"] for answer in answered] == [77, 77]
 
 
 @pytest.mark.asyncio

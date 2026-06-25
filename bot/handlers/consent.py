@@ -21,6 +21,7 @@ from bot.locales import (
 )
 from bot.services.api_client import ServerAPIClient, ServerAPIError
 from bot.services.consent_store import user_consents
+from bot.services.telegram_messages import answer_message
 
 router = Router(name="consent")
 REVOKE_COMMAND_ARGS = {
@@ -59,13 +60,15 @@ async def command_consent(message: Message, config: Config) -> None:
         text = format_message("consent_status_active", language)
         if policy_links:
             text = f"{text}\n\n{policy_links}"
-        await message.answer(
+        await answer_message(
+            message,
             text,
             reply_markup=main_menu_keyboard(language),
         )
         return
 
-    await message.answer(
+    await answer_message(
+        message,
         format_consent_prompt(
             language,
             privacy_policy_url=config.privacy_policy_url,
@@ -114,7 +117,8 @@ async def accept_consent_callback(callback: CallbackQuery, config: Config) -> No
             _accepted_text(language),
             reply_markup=None,
         )
-        await callback.message.answer(
+        await answer_message(
+            callback.message,
             format_message("consent_ready", language),
             reply_markup=main_menu_keyboard(language),
         )
@@ -138,7 +142,8 @@ async def revoke_consent(callback: CallbackQuery, config: Config) -> None:
             format_message("consent_revoked", language),
             reply_markup=None,
         )
-        await callback.message.answer(
+        await answer_message(
+            callback.message,
             format_consent_prompt(
                 language,
                 privacy_policy_url=config.privacy_policy_url,
@@ -173,7 +178,10 @@ async def _persist_callback_consent(
     except ServerAPIError:
         await callback.answer(format_message("consent_save_failed", language_code, html=False))
         if callback.message is not None:
-            await callback.message.answer(format_message("consent_save_failed", language_code))
+            await answer_message(
+                callback.message,
+                format_message("consent_save_failed", language_code),
+            )
         return None
 
 
@@ -199,23 +207,26 @@ async def _persist_message_consent(
                 client=client,
             )
     except ServerAPIError:
-        await message.answer(format_message("consent_save_failed", language_code))
+        await answer_message(message, format_message("consent_save_failed", language_code))
         return None
 
 
 async def _send_accept_success(message: Message, language_code: str) -> None:
-    await message.answer(
+    await answer_message(
+        message,
         _accepted_text(language_code),
         reply_markup=main_menu_keyboard(language_code),
     )
-    await message.answer(
+    await answer_message(
+        message,
         format_message("consent_ready", language_code),
         reply_markup=main_menu_keyboard(language_code),
     )
 
 
 async def _send_revoked_prompt(message: Message, config: Config, language_code: str) -> None:
-    await message.answer(
+    await answer_message(
+        message,
         "\n\n".join(
             [
                 format_message("consent_revoked", language_code),

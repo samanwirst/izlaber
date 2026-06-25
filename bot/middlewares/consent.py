@@ -15,6 +15,7 @@ from bot.keyboards.consent import (
 )
 from bot.locales import consent_multilingual_button, format_consent_prompt
 from bot.services.consent_store import user_consents
+from bot.services.telegram_messages import answer_message
 
 CONSENT_CALLBACKS = {
     CONSENT_ACCEPT_CALLBACK,
@@ -71,8 +72,8 @@ async def _send_consent_prompt(event: TelegramObject, config: Config) -> None:
     if isinstance(event, CallbackQuery):
         await event.answer(consent_multilingual_button("consent_first_alert"))
         if event.message is not None:
-            await event.message.answer(text, reply_markup=keyboard)
+            await answer_message(event.message, text, reply_markup=keyboard)
         return
 
     if isinstance(event, Message):
-        await event.answer(text, reply_markup=keyboard)
+        await answer_message(event, text, reply_markup=keyboard)
