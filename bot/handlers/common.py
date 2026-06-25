@@ -910,6 +910,7 @@ async def _load_ranked_candidates(
                 query=query,
                 limit=initial_limit,
                 offset=candidate_offset,
+                balance_page_size=config.product_search_limit,
             )
             if not _should_use_ai_rerank(
                 query=query,
@@ -918,7 +919,10 @@ async def _load_ranked_candidates(
                 candidate_offset=candidate_offset,
                 allow_ai_rerank=allow_ai_rerank,
             ):
-                return products
+                return _balance_products_by_marketplace(
+                    products,
+                    page_size=config.product_search_limit,
+                )
 
             candidate_limit = _candidate_limit(config)
             if len(products) < candidate_limit:
@@ -926,6 +930,7 @@ async def _load_ranked_candidates(
                     query=query,
                     limit=candidate_limit,
                     offset=candidate_offset,
+                    balance_page_size=config.product_search_limit,
                 )
             ranked_result = await rank_products(
                 query=query,
@@ -950,10 +955,14 @@ async def _load_ranked_candidates(
                         len(products),
                         len(merged_products),
                     )
-                    return await rerank_products(
+                    reranked_products = await rerank_products(
                         query=query,
                         products=merged_products,
                         config=config,
+                    )
+                    return _balance_products_by_marketplace(
+                        reranked_products,
+                        page_size=config.product_search_limit,
                     )
     except ServerAPIError as error:
         logger.warning("Product search failed for query %r: %s", query, error)
@@ -966,7 +975,10 @@ async def _load_ranked_candidates(
             )
         return None
 
-    return ranked_result.products
+    return _balance_products_by_marketplace(
+        ranked_result.products,
+        page_size=config.product_search_limit,
+    )
 
 
 async def _run_text_search(
@@ -1386,6 +1398,7 @@ async def _load_expanded_products(
                     filters=_expansion_filters(expansion),
                     limit=config.openai_search_expand_query_limit,
                     offset=0,
+                    balance_page_size=config.product_search_limit,
                 )
             )
         except ServerAPIError as error:
@@ -1534,6 +1547,10 @@ async def _run_text_search_ai_rescue(
     products = _merge_unique_products([], products)
     if products:
         products = await rerank_products(query=rescue_query, products=products, config=config)
+        products = _balance_products_by_marketplace(
+            products,
+            page_size=config.product_search_limit,
+        )
 
     sponsored_products = await _load_sponsored_products(
         query=rescue_query,
@@ -1983,6 +2000,101 @@ def _merge_unique_products(*product_groups: list[ProductDTO]) -> list[ProductDTO
     return products
 
 
+def _balance_products_by_marketplace(
+    products: list[ProductDTO],
+    *,
+    page_size: int,
+) -> list[ProductDTO]:
+    if not products or page_size <= 1:
+        return products
+
+    marketplace_order = ["uzum", "wildberries"]
+    grouped: dict[str, list[ProductDTO]] = {code: [] for code in marketplace_order}
+    other_products: list[ProductDTO] = []
+    for product in products:
+        marketplace_code = (product.marketplace_code or "").casefold()
+        if marketplace_code in grouped:
+            grouped[marketplace_code].append(product)
+        else:
+            other_products.append(product)
+    for product in other_products:
+        grouped.setdefault(product.marketplace_code or "", []).append(product)
+
+    codes = [code for code in grouped if grouped[code]]
+    if len(codes) <= 1:
+        return products
+
+    page_size = max(1, page_size)
+    cursors = {code: 0 for code in codes}
+    balanced: list[ProductDTO] = []
+    while len(balanced) < len(products):
+        page_limit = min(page_size, len(products) - len(balanced))
+        page_codes = [code for code in codes if cursors[code] < len(grouped[code])]
+        if not page_codes:
+            break
+        targets = _marketplace_page_targets(
+            page_codes,
+            page_limit=page_limit,
+            grouped=grouped,
+            cursors=cursors,
+        )
+        if not any(targets.values()):
+            break
+
+        while len(balanced) < len(products) and any(targets.values()):
+            progressed = False
+            for code in page_codes:
+                if targets[code] <= 0:
+                    continue
+                balanced.append(grouped[code][cursors[code]])
+                cursors[code] += 1
+                targets[code] -= 1
+                progressed = True
+                if len(balanced) >= len(products):
+                    break
+            if not progressed:
+                break
+
+    return balanced
+
+
+def _marketplace_page_targets(
+    codes: list[str],
+    *,
+    page_limit: int,
+    grouped: dict[str, list[ProductDTO]],
+    cursors: dict[str, int],
+) -> dict[str, int]:
+    base_target, extra = divmod(page_limit, len(codes))
+    targets = {
+        code: base_target + (1 if index < extra else 0)
+        for index, code in enumerate(codes)
+    }
+
+    deficit = 0
+    for code in codes:
+        available = len(grouped[code]) - cursors[code]
+        if targets[code] > available:
+            deficit += targets[code] - available
+            targets[code] = available
+
+    while deficit > 0:
+        progressed = False
+        for code in codes:
+            spare = len(grouped[code]) - cursors[code] - targets[code]
+            if spare <= 0:
+                continue
+            targets[code] += 1
+            deficit -= 1
+            progressed = True
+            if deficit <= 0:
+                break
+        if not progressed:
+            break
+
+    return targets
+
+
 def _search_expansion_allowed(*, config: Config, candidate_offset: int) -> bool:
     return bool(
         candidate_offset == 0
@@ -2125,6 +2237,7 @@ async def _load_photo_ranked_candidates(
                     query=query,
                     limit=query_limit,
                     offset=0,
+                    balance_page_size=config.product_search_limit,
                 )
                 logger.info(
                     "Photo candidate query=%r returned %s products.",
@@ -2158,6 +2271,7 @@ async def _load_photo_ranked_candidates(
                             query=query,
                             limit=query_limit,
                             offset=0,
+                            balance_page_size=config.product_search_limit,
                         )
                         logger.info(
                             "Photo candidate query=%r returned %s products after backfill.",
@@ -2181,7 +2295,14 @@ async def _load_photo_ranked_candidates(
                     config=config,
                 )
                 if substitute_products:
-                    return substitute_query, substitute_products, "substitute"
+                    return (
+                        substitute_query,
+                        _balance_products_by_marketplace(
+                            substitute_products,
+                            page_size=config.product_search_limit,
+                        ),
+                        "substitute",
+                    )
     except ServerAPIError as error:
         logger.warning("Photo product candidate search failed for %r: %s", queries, error)
         await message.answer(
@@ -2209,7 +2330,14 @@ async def _load_photo_ranked_candidates(
     )
     if ranked_products is None:
         if config.openai_photo_text_fallback_enabled:
-            return used_query, products, "text"
+            return (
+                used_query,
+                _balance_products_by_marketplace(
+                    products,
+                    page_size=config.product_search_limit,
+                ),
+                "text",
+            )
         await message.answer(
             format_message("photo_ai_unavailable", language),
             reply_markup=main_menu_keyboard(language),
@@ -2221,14 +2349,28 @@ async def _load_photo_ranked_candidates(
             products=ranked_products,
         )
     if ranked_products:
-        return used_query, ranked_products, "ai"
+        return (
+            used_query,
+            _balance_products_by_marketplace(
+                ranked_products,
+                page_size=config.product_search_limit,
+            ),
+            "ai",
+        )
     safe_text_fallback = _photo_text_fallback_products(
         photo_query=photo_query,
         products=products,
         limit=max(config.product_search_limit, config.openai_photo_candidate_limit),
     )
     if safe_text_fallback:
-        return used_query, safe_text_fallback, "text"
+        return (
+            used_query,
+            _balance_products_by_marketplace(
+                safe_text_fallback,
+                page_size=config.product_search_limit,
+            ),
+            "text",
+        )
     if _photo_brand_tokens(photo_query.brand):
         return used_query, [], "none"
     try:
@@ -2246,7 +2388,14 @@ async def _load_photo_ranked_candidates(
         logger.warning("Photo substitute search failed for %r: %s", photo_query.query, error)
         substitute_query, substitute_products = used_query, []
     if substitute_products:
-        return substitute_query, substitute_products, "substitute"
+        return (
+            substitute_query,
+            _balance_products_by_marketplace(
+                substitute_products,
+                page_size=config.product_search_limit,
+            ),
+            "substitute",
+        )
     return used_query, [], "none"
 
 
@@ -2312,6 +2461,7 @@ async def _load_photo_substitute_products(
             query=query,
             limit=query_limit,
             offset=0,
+            balance_page_size=config.product_search_limit,
         )
         filtered = _photo_text_fallback_products(
             photo_query=photo_query,
@@ -2516,7 +2666,10 @@ async def _load_visual_match_candidates(
                 limit=max(config.product_search_limit, 25),
             )
             if products:
-                return products
+                return _balance_products_by_marketplace(
+                    products,
+                    page_size=config.product_search_limit,
+                )
 
             source_product_ids = _source_product_ids_from_text(message.caption or "")
             if not source_product_ids:
@@ -2531,11 +2684,15 @@ async def _load_visual_match_candidates(
                 source_product_ids,
                 stats,
             )
-            return await client.visual_search_products(
+            products = await client.visual_search_products(
                 ahash=fingerprint.ahash,
                 dhash=fingerprint.dhash,
                 max_distance=config.photo_visual_match_max_distance,
                 limit=max(config.product_search_limit, 25),
+            )
+            return _balance_products_by_marketplace(
+                products,
+                page_size=config.product_search_limit,
             )
     except ServerAPIError as error:
         logger.warning("Visual product search failed: %s", error)

@@ -12,6 +12,7 @@ from bot.config import BotConfig, Config, _policy_url
 from bot.handlers import common as common_handlers
 from bot.handlers.admin import _format_usd, _is_openai_status_admin
 from bot.handlers.common import (
+    _balance_products_by_marketplace,
     _cover_image_to_jpeg,
     _cover_url_needs_jpeg_upload,
     _expansion_filters,
@@ -77,15 +78,19 @@ from bot.services.rate_limit import RateLimitRule, SlidingWindowRateLimiter, Use
 from bot.services.search_state import SearchStateStore
 
 
-def product(product_id: int, title: str) -> ProductDTO:
+def product(product_id: int, title: str, marketplace_code: str = "uzum") -> ProductDTO:
+    marketplace_name = "Wildberries" if marketplace_code == "wildberries" else "Uzum Market"
+    marketplace_base_url = (
+        "https://www.wildberries.uz" if marketplace_code == "wildberries" else "https://uzum.uz"
+    )
     return ProductDTO(
         id=product_id,
         title=title,
-        canonical_url=f"https://uzum.uz/ru/product/test-{product_id}",
+        canonical_url=f"{marketplace_base_url}/ru/product/test-{product_id}",
         cover_image_url=None,
-        marketplace_code="uzum",
-        marketplace_name="Uzum Market",
-        marketplace_base_url="https://uzum.uz",
+        marketplace_code=marketplace_code,
+        marketplace_name=marketplace_name,
+        marketplace_base_url=marketplace_base_url,
         brand=None,
         current_price=None,
         old_price=None,
@@ -132,6 +137,26 @@ def test_product_card_can_render_tracking_link():
         "?ctx=11111111-1111-1111-1111-111111111111"
     )
     assert tracking_url in render_product_card(item, 1, "en")
+
+
+def test_balance_products_by_marketplace_targets_bot_pages_after_rerank():
+    skewed = [
+        *(product(product_id, f"Uzum {product_id}") for product_id in range(1, 13)),
+        *(
+            product(product_id, f"WB {product_id}", marketplace_code="wildberries")
+            for product_id in range(101, 111)
+        ),
+    ]
+
+    balanced = _balance_products_by_marketplace(skewed, page_size=10)
+    first_page = [item.marketplace_code for item in balanced[:10]]
+    second_page = [item.marketplace_code for item in balanced[10:20]]
+
+    assert first_page.count("uzum") == 5
+    assert first_page.count("wildberries") == 5
+    assert second_page.count("uzum") == 5
+    assert second_page.count("wildberries") == 5
+    assert [item.id for item in balanced[:4]] == [1, 101, 2, 102]
 
 
 def test_product_card_renders_sponsored_label():

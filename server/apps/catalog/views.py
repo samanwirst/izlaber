@@ -27,7 +27,11 @@ from apps.catalog.models import (
     UserConsentEvent,
     UserPreference,
 )
-from apps.catalog.search import query_price_filters, search_product_ids
+from apps.catalog.search import (
+    balanced_marketplace_search_product_ids,
+    query_price_filters,
+    search_product_ids,
+)
 from apps.catalog.serializers import (
     AnalyticsEventSerializer,
     CategorySerializer,
@@ -117,17 +121,29 @@ class ProductViewSet(
         max_price = params.get("max_price")
         if query:
             limit, offset = _pagination_window(params)
+            balance_page_size = _balance_page_size(params, limit=limit)
             query_min_price, query_max_price = query_price_filters(query)
             min_price = min_price or query_min_price
             max_price = max_price or query_max_price
-            product_ids = search_product_ids(
-                query,
-                marketplace_code=marketplace,
-                active_only=active_only not in {"false", "0", "no"},
-                limit=limit + offset,
-                min_price=min_price,
-                max_price=max_price,
-            )
+            active = active_only not in {"false", "0", "no"}
+            if marketplace:
+                product_ids = search_product_ids(
+                    query,
+                    marketplace_code=marketplace,
+                    active_only=active,
+                    limit=limit + offset,
+                    min_price=min_price,
+                    max_price=max_price,
+                )
+            else:
+                product_ids = balanced_marketplace_search_product_ids(
+                    query,
+                    active_only=active,
+                    limit=limit + offset,
+                    page_size=balance_page_size,
+                    min_price=min_price,
+                    max_price=max_price,
+                )
             if not product_ids:
                 return queryset.none()
             search_order = Case(
@@ -597,6 +613,14 @@ def _pagination_window(params) -> tuple[int, int]:
     limit = _positive_int(params.get("limit"), default=20)
     offset = _positive_int(params.get("offset"), default=0)
     return min(limit, 100), offset
+
+
+def _balance_page_size(params, *, limit: int) -> int:
+    default = min(max(limit, 1), 10)
+    page_size = _positive_int(params.get("balance_page_size"), default=default)
+    if page_size <= 0:
+        page_size = default
+    return min(page_size, 100)
 
 
 def _positive_int(value: str | None, *, default: int) -> int:

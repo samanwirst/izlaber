@@ -5,6 +5,7 @@ import pytest
 from apps.catalog import search as catalog_search
 from apps.catalog.models import Product, ProductSearchTerm, ProductSnapshot
 from apps.catalog.search import (
+    balance_ranked_product_ids_by_marketplace,
     product_search_terms,
     product_search_text,
     protected_query_term_groups,
@@ -306,6 +307,157 @@ def test_search_relaxes_extra_visual_details_without_losing_product_type(db):
     )
 
     assert product_ids[0] == Product.objects.get(source_product_id="mug-1").id
+
+
+def test_balance_ranked_product_ids_by_marketplace_targets_each_page():
+    ranked = balance_ranked_product_ids_by_marketplace(
+        {
+            "uzum": list(range(1, 13)),
+            "wildberries": list(range(101, 111)),
+        },
+        limit=20,
+        page_size=10,
+    )
+
+    assert ranked[:10] == [1, 101, 2, 102, 3, 103, 4, 104, 5, 105]
+    assert ranked[10:20] == [6, 106, 7, 107, 8, 108, 9, 109, 10, 110]
+
+
+def test_balance_ranked_product_ids_fills_short_marketplace_without_blanks():
+    ranked = balance_ranked_product_ids_by_marketplace(
+        {
+            "uzum": list(range(1, 13)),
+            "wildberries": [101, 102, 103],
+        },
+        limit=10,
+        page_size=10,
+    )
+
+    assert len(ranked) == 10
+    assert ranked.count(101) == 1
+    assert ranked.count(102) == 1
+    assert ranked.count(103) == 1
+    assert sum(1 for product_id in ranked if product_id < 100) == 7
+
+
+def test_balanced_search_prefers_strict_marketplace_matches_over_fallback(monkeypatch):
+    calls = []
+
+    def fake_search_product_ids(_query, **kwargs):
+        calls.append(kwargs)
+        if not kwargs["allow_fallback"]:
+            if kwargs["marketplace_code"] == "uzum":
+                return list(range(1, 11))
+            return []
+        if kwargs["marketplace_code"] == "wildberries":
+            return list(range(101, 111))
+        return list(range(1, 11))
+
+    monkeypatch.setattr(catalog_search, "search_product_ids", fake_search_product_ids)
+
+    product_ids = catalog_search.balanced_marketplace_search_product_ids(
+        "чехол iphone",
+        active_only=True,
+        limit=10,
+        page_size=10,
+    )
+
+    assert product_ids == list(range(1, 11))
+    assert all(call["allow_fallback"] is False for call in calls)
+
+
+def test_product_list_balances_uzum_and_wildberries_per_page(settings, db):
+    settings.BOT_API_KEY = "bot-key"
+    for index in range(12):
+        payload = product_payload(
+            source_product_id=f"u{index}",
+            content_hash=f"hash-u{index}",
+        )
+        payload["title"] = f"Баланс тестовый товар Uzum {index}"
+        payload["rating"] = "5.0"
+        payload["reviews_count"] = 10_000 - index
+        upsert_products(marketplace_code="uzum", products=[payload])
+    for index in range(10):
+        payload = product_payload(
+            source_product_id=f"w{index}",
+            content_hash=f"hash-w{index}",
+        )
+        payload["title"] = f"Баланс тестовый товар WB {index}"
+        payload["rating"] = "4.0"
+        payload["reviews_count"] = 100 - index
+        upsert_products(marketplace_code="wildberries", products=[payload])
+
+    client = APIClient()
+    response = client.get(
+        "/api/v1/products/",
+        {"q": "баланс тестовый товар", "limit": 20, "balance_page_size": 10},
+        HTTP_X_INTERNAL_API_KEY="bot-key",
+    )
+
+    assert response.status_code == 200
+    rows = response.data["results"]
+    assert len(rows) == 20
+    first_page = [row["marketplace"]["code"] for row in rows[:10]]
+    second_page = [row["marketplace"]["code"] for row in rows[10:20]]
+    assert first_page.count("uzum") == 5
+    assert first_page.count("wildberries") == 5
+    assert second_page.count("uzum") == 5
+    assert second_page.count("wildberries") == 5
+
+    first_page_response = client.get(
+        "/api/v1/products/",
+        {
+            "q": "баланс тестовый товар",
+            "limit": 10,
+            "offset": 0,
+            "balance_page_size": 10,
+        },
+        HTTP_X_INTERNAL_API_KEY="bot-key",
+    )
+    second_page_response = client.get(
+        "/api/v1/products/",
+        {
+            "q": "баланс тестовый товар",
+            "limit": 10,
+            "offset": 10,
+            "balance_page_size": 10,
+        },
+        HTTP_X_INTERNAL_API_KEY="bot-key",
+    )
+
+    assert [row["id"] for row in first_page_response.data["results"]] == [
+        row["id"] for row in rows[:10]
+    ]
+    assert [row["id"] for row in second_page_response.data["results"]] == [
+        row["id"] for row in rows[10:20]
+    ]
+
+
+def test_product_list_balance_respects_marketplace_filter(settings, db):
+    settings.BOT_API_KEY = "bot-key"
+    for marketplace_code in ("uzum", "wildberries"):
+        for index in range(3):
+            payload = product_payload(
+                source_product_id=f"{marketplace_code}-{index}",
+                content_hash=f"hash-{marketplace_code}-{index}",
+            )
+            payload["title"] = f"Фильтр тестовый товар {index}"
+            upsert_products(marketplace_code=marketplace_code, products=[payload])
+
+    client = APIClient()
+    response = client.get(
+        "/api/v1/products/",
+        {
+            "q": "фильтр тестовый товар",
+            "marketplace": "uzum",
+            "limit": 10,
+            "balance_page_size": 10,
+        },
+        HTTP_X_INTERNAL_API_KEY="bot-key",
+    )
+
+    assert response.status_code == 200
+    assert {row["marketplace"]["code"] for row in response.data["results"]} == {"uzum"}
 
 
 def test_postgres_relaxed_search_drops_later_descriptive_terms_first(monkeypatch):

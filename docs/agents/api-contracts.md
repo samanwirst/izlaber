@@ -14,7 +14,7 @@ All internal consumers use `X-Internal-API-Key`.
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/v1/products/` | Search/list product cards. Supports `q`, `marketplace`, `limit`, `offset`, `active_only`, price filters, category. |
+| `GET /api/v1/products/` | Search/list product cards. Supports `q`, `marketplace`, `limit`, `offset`, `balance_page_size`, `active_only`, price filters, category. |
 | `GET /api/v1/products/{id}/` | Product detail. |
 | `POST /api/v1/products/visual-search/` | Search by cover image fingerprints. |
 | `POST /api/v1/products/visual-index/` | Build/refresh cover fingerprints for selected products. |
@@ -32,6 +32,16 @@ All internal consumers use `X-Internal-API-Key`.
 | `GET /api/v1/redirect/products/{product_id}/` | Store product click analytics, optionally set analytics cookie, then redirect to product URL. |
 
 Bot client wrapper: `bot/services/api_client.py`.
+
+Product search ordering contract:
+
+- When `q` is provided without a `marketplace` filter, organic results are blended
+  from top-ranked Uzum and Wildberries candidates so each `balance_page_size`
+  window aims for an even split, for example 5/5 when the bot page size is 10.
+- If one marketplace has fewer matching products, the remaining slots are filled
+  by the other marketplace; the API must not invent placeholder products.
+- When `marketplace` is provided, balancing is disabled and only that marketplace
+  is returned.
 
 Consent contract:
 

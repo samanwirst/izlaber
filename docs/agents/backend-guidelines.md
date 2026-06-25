@@ -21,6 +21,10 @@ Do not expose these endpoints without internal auth.
 - Product list responses intentionally use `ProductCardSerializer` and a reduced queryset.
 - Preserve pagination caps in views. Current product list/visual limits are capped at 100.
 - Keep search candidate sets bounded before AI reranking.
+- For unfiltered bot product search, preserve marketplace diversity: the server should
+  blend top-ranked Uzum and Wildberries candidates toward a 50/50 split for each
+  `balance_page_size` window, while filling shortages with real matches from the
+  available marketplace.
 - Keep catalog intent rules and tests together. When changing `apps.catalog.search`, update
   the query intent matrix in `server/tests/test_ingestion.py` so accessory-vs-target cases
   such as phone cases, protective glass, straps, filters, and stickers stay covered.

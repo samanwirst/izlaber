@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from decimal import Decimal
 
 from django.db import connection
@@ -394,6 +394,8 @@ PRICE_STOP_TOKENS = {
     "uzs",
 }
 MAX_POSTGRES_CANDIDATES = 1000
+BALANCED_MARKETPLACE_CODES = ("uzum", "wildberries")
+DEFAULT_MARKETPLACE_BALANCE_PAGE_SIZE = 10
 
 
 def product_search_terms(
@@ -486,6 +488,7 @@ def search_product_ids(
     limit: int,
     min_price: Decimal | int | str | None = None,
     max_price: Decimal | int | str | None = None,
+    allow_fallback: bool = True,
 ) -> list[int]:
     terms = query_terms(query)
     if not terms or limit <= 0:
@@ -507,7 +510,7 @@ def search_product_ids(
             max_price=max_price,
             required_term_groups=required_term_groups,
         )
-        if rows:
+        if rows or not allow_fallback:
             return rows
 
         # Trigram catches morphology and typos that exact token FTS misses.
@@ -569,7 +572,7 @@ def search_product_ids(
         )
         .values_list("product_id", flat=True)[:limit]
     )
-    if rows or required_terms == 1:
+    if rows or required_terms == 1 or not allow_fallback:
         return rows
 
     relaxed_required_terms = max(1, required_terms - 1)
@@ -594,6 +597,194 @@ def search_product_ids(
         )
         .values_list("product_id", flat=True)[:limit]
     )
+
+
+def balanced_marketplace_search_product_ids(
+    query: str,
+    *,
+    active_only: bool,
+    limit: int,
+    page_size: int = DEFAULT_MARKETPLACE_BALANCE_PAGE_SIZE,
+    min_price: Decimal | int | str | None = None,
+    max_price: Decimal | int | str | None = None,
+    marketplace_codes: tuple[str, ...] = BALANCED_MARKETPLACE_CODES,
+) -> list[int]:
+    """Return a marketplace-balanced ranked prefix for bot pagination.
+
+    Each marketplace still contributes its own top-ranked search results. The
+    blend only changes cross-marketplace interleaving so a larger catalog does
+    not crowd out a smaller one when both have matching products.
+    """
+    if limit <= 0:
+        return []
+
+    bounded_limit = min(max(limit, 1), MAX_POSTGRES_CANDIDATES)
+    ranked_by_marketplace = {
+        marketplace_code: search_product_ids(
+            query,
+            marketplace_code=marketplace_code,
+            active_only=active_only,
+            limit=bounded_limit,
+            min_price=min_price,
+            max_price=max_price,
+            allow_fallback=False,
+        )
+        for marketplace_code in marketplace_codes
+    }
+    balanced_ids = balance_ranked_product_ids_by_marketplace(
+        ranked_by_marketplace,
+        limit=bounded_limit,
+        page_size=page_size,
+        marketplace_codes=marketplace_codes,
+    )
+    if balanced_ids:
+        return balanced_ids
+
+    fallback_by_marketplace = {
+        marketplace_code: search_product_ids(
+            query,
+            marketplace_code=marketplace_code,
+            active_only=active_only,
+            limit=bounded_limit,
+            min_price=min_price,
+            max_price=max_price,
+        )
+        for marketplace_code in marketplace_codes
+    }
+    balanced_fallback_ids = balance_ranked_product_ids_by_marketplace(
+        fallback_by_marketplace,
+        limit=bounded_limit,
+        page_size=page_size,
+        marketplace_codes=marketplace_codes,
+    )
+    if balanced_fallback_ids:
+        return balanced_fallback_ids
+
+    return search_product_ids(
+        query,
+        marketplace_code=None,
+        active_only=active_only,
+        limit=bounded_limit,
+        min_price=min_price,
+        max_price=max_price,
+    )
+
+
+def balance_ranked_product_ids_by_marketplace(
+    ranked_by_marketplace: Mapping[str, list[int]],
+    *,
+    limit: int,
+    page_size: int = DEFAULT_MARKETPLACE_BALANCE_PAGE_SIZE,
+    marketplace_codes: Iterable[str] | None = None,
+) -> list[int]:
+    if limit <= 0:
+        return []
+
+    codes = _balance_marketplace_codes(ranked_by_marketplace, marketplace_codes)
+    if not codes:
+        return []
+
+    seen_ids: set[int] = set()
+    queues: dict[str, list[int]] = {}
+    for code in codes:
+        queue: list[int] = []
+        for product_id in ranked_by_marketplace.get(code, []):
+            if product_id in seen_ids:
+                continue
+            seen_ids.add(product_id)
+            queue.append(product_id)
+        queues[code] = queue
+
+    page_size = max(1, min(page_size, limit))
+    cursors = {code: 0 for code in codes}
+    balanced_ids: list[int] = []
+
+    while len(balanced_ids) < limit:
+        page_limit = min(page_size, limit - len(balanced_ids))
+        page_codes = [code for code in codes if cursors[code] < len(queues[code])]
+        if not page_codes:
+            break
+
+        targets = _page_marketplace_targets(
+            page_codes,
+            page_limit=page_limit,
+            queues=queues,
+            cursors=cursors,
+        )
+        if not any(targets.values()):
+            break
+
+        while len(balanced_ids) < limit and any(targets.values()):
+            progressed = False
+            for code in page_codes:
+                if targets[code] <= 0:
+                    continue
+                balanced_ids.append(queues[code][cursors[code]])
+                cursors[code] += 1
+                targets[code] -= 1
+                progressed = True
+                if len(balanced_ids) >= limit:
+                    break
+            if not progressed:
+                break
+
+    return balanced_ids
+
+
+def _balance_marketplace_codes(
+    ranked_by_marketplace: Mapping[str, list[int]],
+    marketplace_codes: Iterable[str] | None,
+) -> list[str]:
+    codes: list[str] = []
+    seen_codes: set[str] = set()
+    for code in marketplace_codes or ():
+        if code in seen_codes:
+            continue
+        codes.append(code)
+        seen_codes.add(code)
+    for code in ranked_by_marketplace:
+        if code in seen_codes:
+            continue
+        codes.append(code)
+        seen_codes.add(code)
+    return [code for code in codes if ranked_by_marketplace.get(code)]
+
+
+def _page_marketplace_targets(
+    codes: list[str],
+    *,
+    page_limit: int,
+    queues: dict[str, list[int]],
+    cursors: dict[str, int],
+) -> dict[str, int]:
+    base_target, extra = divmod(page_limit, len(codes))
+    targets = {
+        code: base_target + (1 if index < extra else 0)
+        for index, code in enumerate(codes)
+    }
+
+    deficit = 0
+    for code in codes:
+        available = len(queues[code]) - cursors[code]
+        if targets[code] > available:
+            deficit += targets[code] - available
+            targets[code] = available
+
+    while deficit > 0:
+        progressed = False
+        for code in codes:
+            spare = len(queues[code]) - cursors[code] - targets[code]
+            if spare <= 0:
+                continue
+            targets[code] += 1
+            deficit -= 1
+            progressed = True
+            if deficit <= 0:
+                break
+        if not progressed:
+            break
+
+    return targets
 
 
 def _filter_queryset_by_required_groups(queryset, required_term_groups: list[set[str]]):

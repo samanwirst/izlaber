@@ -62,12 +62,15 @@ class ServerAPIClient:
         limit: int = 5,
         offset: int = 0,
         marketplace: str | None = None,
+        balance_page_size: int | None = None,
     ) -> list[ProductDTO]:
         params = {
             "q": query,
             "limit": str(limit),
             "offset": str(offset),
         }
+        if balance_page_size is not None:
+            params["balance_page_size"] = str(balance_page_size)
         if marketplace:
             params["marketplace"] = marketplace
         if filters:
