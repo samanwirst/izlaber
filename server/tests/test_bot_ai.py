@@ -64,6 +64,8 @@ from bot.services.ai_runtime import AIRuntimeState
 from bot.services.ai_vision import PhotoSearchQuery, parse_photo_search_output
 from bot.services.api_client import (
     ProductDTO,
+    ServerAPIClient,
+    ServerAPIError,
     _response_rows,
     product_click_url,
     render_product_card,
@@ -99,6 +101,19 @@ def test_api_client_response_rows_accepts_list_and_paginated_dict():
     assert _response_rows(rows) == rows
     assert _response_rows({"results": rows}) == rows
     assert _response_rows({"results": None}) == []
+
+
+@pytest.mark.asyncio
+async def test_api_client_wraps_request_timeout_as_server_error():
+    class TimeoutSession:
+        def get(self, *_args, **_kwargs):
+            raise TimeoutError
+
+    client = ServerAPIClient("https://api.example", "key", timeout=10)
+    client._session = TimeoutSession()
+
+    with pytest.raises(ServerAPIError, match="timed out after 10.0s"):
+        await client._get("/v1/products/")
 
 
 def test_product_card_can_render_tracking_link():
@@ -366,6 +381,42 @@ async def test_text_search_uses_understood_query_for_candidates(monkeypatch):
     assert sent_queries == ["зеленая каменная тарелка"]
     assert ("search", original_query) in tracked_events
     assert ("search_query_understood", "зеленая каменная тарелка") in tracked_events
+
+
+@pytest.mark.asyncio
+async def test_ranked_candidate_search_uses_overall_search_timeout(monkeypatch):
+    timeouts: list[float] = []
+
+    class Client:
+        def __init__(self, _base_url, _api_key, timeout):
+            timeouts.append(timeout)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return None
+
+        async def search_products(self, **_kwargs):
+            return [product(1, "Windows 10 Pro key")]
+
+    monkeypatch.setattr(common_handlers, "ServerAPIClient", Client)
+
+    config = Config(
+        bot=BotConfig(token="test"),
+        server_api_timeout=10,
+        search_timeout_seconds=60,
+    )
+
+    ranked = await common_handlers._load_ranked_candidates(
+        query="виндовс 10",
+        candidate_offset=0,
+        config=config,
+        message=None,
+    )
+
+    assert ranked == [product(1, "Windows 10 Pro key")]
+    assert timeouts == [61.0]
 
 
 def test_search_state_isolated_by_user():

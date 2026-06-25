@@ -57,6 +57,7 @@ Analytics variables:
 | `BOT_SPONSORED_SEARCH_LIMIT` | Sponsored product cards per first search page. Set `0` to disable sponsored placements. |
 | `BOT_SEARCH_TIMEOUT_SECONDS` | Overall per-search user-facing timeout. Values below `60` are raised to `60`; private-chat searches send progress pings after 5 seconds and then every 10 seconds. |
 | `BOT_SEARCH_AI_RESCUE_AFTER_SECONDS` | Starts an AI query rescue inside the overall search timeout. Default `30`; set `0` to disable. |
+| `BOT_SERVER_API_TIMEOUT` | Default timeout for short bot API calls; catalog search calls use the overall search window so they are not cut off before progress pings and AI rescue can run. |
 | `BOT_MARKETPLACE_CUSTOM_EMOJI_UZUM`, `BOT_MARKETPLACE_CUSTOM_EMOJI_WILDBERRIES` | Optional Telegram custom emoji IDs for marketplace logo prefixes in product card titles. Leave empty until real IDs are available. |
 | `ANALYTICS_COOKIE_ENABLED` | Enables first-party click attribution cookie on redirect endpoint. |
 | `ANALYTICS_COOKIE_NAME` | Cookie name, default `izlaber_cid`. |

@@ -243,6 +243,8 @@ class ServerAPIClient:
                 if response.status >= 400:
                     raise ServerAPIError(f"Server returned HTTP {response.status}: {body[:200]}")
                 return await response.json(content_type=None)
+        except TimeoutError as exc:
+            raise ServerAPIError(f"Server API request timed out after {self.timeout:.1f}s") from exc
         except ClientError as exc:
             raise ServerAPIError(f"Cannot connect to server API: {exc}") from exc
 
@@ -259,6 +261,8 @@ class ServerAPIClient:
                 if response.status >= 400:
                     raise ServerAPIError(f"Server returned HTTP {response.status}: {body[:200]}")
                 return await response.json(content_type=None)
+        except TimeoutError as exc:
+            raise ServerAPIError(f"Server API request timed out after {self.timeout:.1f}s") from exc
         except ClientError as exc:
             raise ServerAPIError(f"Cannot connect to server API: {exc}") from exc
 

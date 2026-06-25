@@ -903,7 +903,7 @@ async def _load_ranked_candidates(
         async with ServerAPIClient(
             config.server_api_base_url,
             config.bot_api_key,
-            timeout=config.server_api_timeout,
+            timeout=_catalog_search_api_timeout(config),
         ) as client:
             products = await client.search_products(
                 query=query,
@@ -1189,6 +1189,10 @@ def _candidate_limit(config: Config) -> int:
     return config.product_search_limit
 
 
+def _catalog_search_api_timeout(config: Config) -> float:
+    return max(config.server_api_timeout, config.search_timeout_seconds + 1.0)
+
+
 def _initial_candidate_limit(config: Config, candidate_offset: int) -> int:
     if (
         candidate_offset == 0
@@ -1394,7 +1398,7 @@ async def _load_understanding_expanded_products(
         async with ServerAPIClient(
             config.server_api_base_url,
             config.bot_api_key,
-            timeout=config.server_api_timeout,
+            timeout=_catalog_search_api_timeout(config),
         ) as client:
             return await _load_expanded_products(
                 client=client,
@@ -1506,7 +1510,7 @@ async def _run_text_search_ai_rescue(
         async with ServerAPIClient(
             config.server_api_base_url,
             config.bot_api_key,
-            timeout=config.server_api_timeout,
+            timeout=_catalog_search_api_timeout(config),
         ) as client:
             products = await _load_expanded_products(
                 client=client,
@@ -2080,7 +2084,7 @@ async def _load_photo_ranked_candidates(
         async with ServerAPIClient(
             config.server_api_base_url,
             config.bot_api_key,
-            timeout=config.server_api_timeout,
+            timeout=_catalog_search_api_timeout(config),
         ) as client:
             for query in queries:
                 query_products = await client.search_products(
@@ -2197,7 +2201,7 @@ async def _load_photo_ranked_candidates(
         async with ServerAPIClient(
             config.server_api_base_url,
             config.bot_api_key,
-            timeout=config.server_api_timeout,
+            timeout=_catalog_search_api_timeout(config),
         ) as client:
             substitute_query, substitute_products = await _load_photo_substitute_products(
                 client=client,
@@ -2469,7 +2473,7 @@ async def _load_visual_match_candidates(
         async with ServerAPIClient(
             config.server_api_base_url,
             config.bot_api_key,
-            timeout=config.server_api_timeout,
+            timeout=_catalog_search_api_timeout(config),
         ) as client:
             products = await client.visual_search_products(
                 ahash=fingerprint.ahash,
