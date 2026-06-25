@@ -4,6 +4,7 @@ import uuid
 from datetime import timedelta
 
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Case, Count, IntegerField, Q, When
 from django.db.models.functions import TruncDate
 from django.http import HttpResponseRedirect
@@ -23,6 +24,7 @@ from apps.catalog.models import (
     Product,
     SponsoredCampaign,
     UserConsent,
+    UserConsentEvent,
     UserPreference,
 )
 from apps.catalog.search import query_price_filters, search_product_ids
@@ -322,34 +324,45 @@ class UserConsentDetailView(APIView):
         if not isinstance(metadata, dict):
             metadata = {}
 
-        consent, _ = UserConsent.objects.get_or_create(
-            telegram_user_id=user_id,
-            defaults={
-                "consent_version": version,
-                "language_code": language_code,
-                "metadata": metadata,
-            },
-        )
-        consent.consent_version = version
-        consent.language_code = language_code
-        consent.source = UserConsent.Source.BOT
-        consent.metadata = metadata
+        with transaction.atomic():
+            consent, _ = UserConsent.objects.get_or_create(
+                telegram_user_id=user_id,
+                defaults={
+                    "consent_version": version,
+                    "language_code": language_code,
+                    "metadata": metadata,
+                },
+            )
+            consent.consent_version = version
+            consent.language_code = language_code
+            consent.source = UserConsent.Source.BOT
+            consent.metadata = metadata
 
-        if action == "accept":
-            consent.personal_data_accepted_at = now
-            consent.sponsored_ads_accepted_at = now
-            consent.declined_at = None
-            consent.revoked_at = None
-        elif action == "decline":
-            consent.personal_data_accepted_at = None
-            consent.sponsored_ads_accepted_at = None
-            consent.declined_at = now
-            consent.revoked_at = None
-        else:
-            consent.declined_at = None
-            consent.revoked_at = now
+            if action == UserConsentEvent.Action.ACCEPT:
+                consent.personal_data_accepted_at = now
+                consent.sponsored_ads_accepted_at = now
+                consent.declined_at = None
+                consent.revoked_at = None
+            elif action == UserConsentEvent.Action.DECLINE:
+                consent.personal_data_accepted_at = None
+                consent.sponsored_ads_accepted_at = None
+                consent.declined_at = now
+                consent.revoked_at = None
+            else:
+                consent.declined_at = None
+                consent.revoked_at = now
 
-        consent.save()
+            consent.save()
+            UserConsentEvent.objects.create(
+                consent=consent,
+                telegram_user_id=user_id,
+                action=action,
+                consent_version=version,
+                language_code=language_code,
+                source=UserConsent.Source.BOT,
+                occurred_at=now,
+                metadata=metadata,
+            )
         serializer = UserConsentSerializer(consent, context={"consent_version": version})
         return Response(serializer.data, status=status.HTTP_200_OK)
 

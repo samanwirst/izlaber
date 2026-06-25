@@ -9,6 +9,7 @@ from apps.catalog.models import (
     Seller,
     SponsoredCampaign,
     UserConsent,
+    UserConsentEvent,
 )
 
 
@@ -56,6 +57,18 @@ class ProductSnapshotAdmin(admin.ModelAdmin):
     search_fields = ("product__title", "content_hash")
 
 
+class UserConsentEventInline(admin.TabularInline):
+    model = UserConsentEvent
+    extra = 0
+    can_delete = False
+    show_change_link = True
+    fields = ("action", "consent_version", "language_code", "source", "occurred_at")
+    readonly_fields = fields
+
+    def has_add_permission(self, _request, _obj=None):
+        return False
+
+
 @admin.register(UserConsent)
 class UserConsentAdmin(admin.ModelAdmin):
     list_display = (
@@ -71,6 +84,36 @@ class UserConsentAdmin(admin.ModelAdmin):
     search_fields = ("=telegram_user_id", "consent_version")
     list_filter = ("consent_version", "language_code", "source", "revoked_at")
     readonly_fields = ("created_at", "updated_at")
+    inlines = (UserConsentEventInline,)
+
+
+@admin.register(UserConsentEvent)
+class UserConsentEventAdmin(admin.ModelAdmin):
+    list_display = (
+        "telegram_user_id",
+        "action",
+        "consent_version",
+        "language_code",
+        "source",
+        "occurred_at",
+    )
+    search_fields = ("=telegram_user_id", "consent_version")
+    list_filter = ("action", "consent_version", "language_code", "source")
+    readonly_fields = (
+        "consent",
+        "telegram_user_id",
+        "action",
+        "consent_version",
+        "language_code",
+        "source",
+        "occurred_at",
+        "metadata",
+        "created_at",
+        "updated_at",
+    )
+
+    def has_add_permission(self, _request):
+        return False
 
 
 @admin.register(SponsoredCampaign)

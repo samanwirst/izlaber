@@ -247,6 +247,42 @@ class UserConsent(TimestampedModel):
         return f"{self.telegram_user_id}: {self.consent_version} ({state})"
 
 
+class UserConsentEvent(TimestampedModel):
+    class Action(models.TextChoices):
+        ACCEPT = "accept", "Accept"
+        DECLINE = "decline", "Decline"
+        REVOKE = "revoke", "Revoke"
+
+    consent = models.ForeignKey(
+        UserConsent,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="events",
+    )
+    telegram_user_id = models.BigIntegerField(db_index=True)
+    action = models.CharField(max_length=16, choices=Action.choices, db_index=True)
+    consent_version = models.SlugField(max_length=64)
+    language_code = models.SlugField(max_length=8, default="uz")
+    source = models.CharField(
+        max_length=32,
+        choices=UserConsent.Source.choices,
+        default=UserConsent.Source.BOT,
+    )
+    occurred_at = models.DateTimeField(db_index=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ("-occurred_at", "-id")
+        indexes = [
+            models.Index(fields=["telegram_user_id", "-occurred_at"]),
+            models.Index(fields=["consent_version", "action"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.telegram_user_id}: {self.action} {self.consent_version}"
+
+
 class SponsoredCampaign(TimestampedModel):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"

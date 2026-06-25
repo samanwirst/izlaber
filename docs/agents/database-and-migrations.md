@@ -21,6 +21,8 @@
 | `ProductSnapshot` | Historical snapshots for changed products. |
 | `ProductSearchTerm` | SQLite fallback token search index. |
 | `UserPreference` | Persistent Telegram user language preferences. |
+| `UserConsent` | Current per-user data/ads consent state used by the bot preload. |
+| `UserConsentEvent` | Append-only consent history for every accept, decline, and revoke action. |
 | `AnalyticsEvent` | Persistent bot, search, impression, and click analytics events. |
 | `SponsoredCampaign` | Managed sponsored product placements with keywords, dates, priority, and caps. |
 | `CrawlRun` | Parser run lifecycle and counts. |

@@ -38,6 +38,8 @@ Consent contract:
 - `action=accept` sets both personal data and sponsored ads timestamps and clears `revoked_at`/`declined_at`.
 - `action=decline` clears acceptance timestamps and stores `declined_at`.
 - `action=revoke` stores `revoked_at`; the bot must treat the user as inactive until they accept again.
+- Every `accept`, `decline`, and `revoke` request also appends a `UserConsentEvent`
+  history row with action, version, language, source, timestamp, and metadata.
 - `has_active_consent` is true only when the stored version matches the requested/current version and both acceptance timestamps exist.
 
 Sponsored campaign contract:
