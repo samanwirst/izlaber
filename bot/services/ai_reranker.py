@@ -65,16 +65,30 @@ async def rerank_products(
     return result.products
 
 
-async def understand_search_query(*, query: str, config: Config) -> SearchQueryUnderstanding:
+async def understand_search_query(
+    *,
+    query: str,
+    config: Config,
+    force_ai: bool = False,
+) -> SearchQueryUnderstanding:
     normalized_query = _compact_text(query, 500)
-    if not normalized_query or not _query_needs_understanding(normalized_query):
+    needs_understanding = _query_needs_understanding(normalized_query)
+    if not normalized_query or (not force_ai and not needs_understanding):
         return SearchQueryUnderstanding(
             query=normalized_query,
             search_queries=[SearchExpansion(normalized_query)] if normalized_query else [],
             source="original",
         )
 
-    fallback = _local_query_understanding(normalized_query)
+    fallback = (
+        _local_query_understanding(normalized_query)
+        if needs_understanding
+        else SearchQueryUnderstanding(
+            query=normalized_query,
+            search_queries=[SearchExpansion(normalized_query)],
+            source="original",
+        )
+    )
     if not _enabled(config) or not config.openai_search_expand_enabled:
         return fallback
 
@@ -404,6 +418,10 @@ def _query_understanding_instructions() -> str:
         "или 'малахит' добавляй только в дополнительные search_queries. "
         "Для рассказа про зеленую тарелку из зеленого камня с кольцами суть запроса: "
         "'зеленая каменная тарелка'. "
+        "Если запрос уже короткий и прямой, сохрани его смысл, но добавь полезные "
+        "варианты написания, перевода, транслитерации и категории товара. Например, "
+        "'виндовс 10' можно расширить до запросов про Windows 10, Windows 10 Pro "
+        "и лицензионный ключ, если это подходит намерению пользователя. "
         "search_queries: 1-3 коротких варианта для поиска в БД; не выдумывай бренд. "
         "Если в запросе есть цена, перенеси ее в min_price/max_price числом в UZS."
     )

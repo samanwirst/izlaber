@@ -97,6 +97,10 @@ LOCALES: dict[str, LocaleCopy] = {
                 "keyinroq urinib ko'ring."
             ),
             "search_still_processing": "Hali ham qidiryapman...",
+            "search_ai_rescue": (
+                "Qidiruv cho'zildi. Aqlli qidiruvni ulab, boshqa so'rov variantlarini "
+                "tekshiryapman..."
+            ),
             "unknown_command": (
                 "Bunday buyruq yo'q. Mahsulot nomini yozing, foto yoki ovoz yuboring."
             ),
@@ -311,6 +315,9 @@ LOCALES: dict[str, LocaleCopy] = {
                 "или повторить позже."
             ),
             "search_still_processing": "все еще ищу....",
+            "search_ai_rescue": (
+                "Поиск затянулся. Подключаю умный поиск и пробую другие формулировки..."
+            ),
             "unknown_command": (
                 "Такой команды нет. Напишите название товара, отправьте фото или голос."
             ),
@@ -526,6 +533,9 @@ LOCALES: dict[str, LocaleCopy] = {
                 "Search took too long. Try a simpler query or repeat it later."
             ),
             "search_still_processing": "Still searching...",
+            "search_ai_rescue": (
+                "Search is taking longer than usual. I am trying smart query variants..."
+            ),
             "unknown_command": (
                 "Unknown command. Type a product name, send a photo, or send a voice message."
             ),

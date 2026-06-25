@@ -77,6 +77,7 @@ class Config:
     search_backfill_limit: int = 30
     search_backfill_max_queries: int = 3
     search_timeout_seconds: float = 60.0
+    search_ai_rescue_after_seconds: float = 30.0
     marketplace_custom_emoji_ids: dict[str, str] = field(default_factory=dict)
 
 
@@ -220,6 +221,10 @@ def load_config() -> Config:
         search_backfill_limit=max(1, int(getenv("BOT_SEARCH_BACKFILL_LIMIT", "30"))),
         search_backfill_max_queries=max(1, int(getenv("BOT_SEARCH_BACKFILL_MAX_QUERIES", "3"))),
         search_timeout_seconds=max(60.0, float(getenv("BOT_SEARCH_TIMEOUT_SECONDS", "60"))),
+        search_ai_rescue_after_seconds=max(
+            0.0,
+            float(getenv("BOT_SEARCH_AI_RESCUE_AFTER_SECONDS", "30")),
+        ),
         marketplace_custom_emoji_ids=_marketplace_custom_emoji_ids(),
     )
 

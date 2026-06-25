@@ -134,6 +134,7 @@ Optional rerank:
 - Set `OPENAI_API_KEY` in `.env` to enable reranking.
 - By default `OPENAI_RERANK_FALLBACK_ONLY=true`: the bot first returns fast PostgreSQL results and calls OpenAI only when the local top results look weak.
 - Long natural-language descriptions are normalized before search. For example, a story about "a green plate made from green stone" is searched as a compact product intent such as `зеленая тарелка камень`, with a bounded set of alternative queries, instead of sending the whole story to PostgreSQL.
+- If a search is still running after `BOT_SEARCH_AI_RESCUE_AFTER_SECONDS` (default `30`), the bot starts an AI query rescue inside the one-minute search window and tries alternative formulations before the final timeout.
 - Photo search uses a visual matching pipeline: the bot understands the user photo, fetches a small candidate set from PostgreSQL, then visually reranks candidate cover images. This avoids returning every generic mug or cream.
 - If the photo model detects a visible brand, candidates without that brand are not treated as exact visual matches even if the product type is similar.
 - Known packaged-goods brands with stable product types can be normalized after vision. For example, if a Snickers photo is misclassified as chips/snacks, the bot rewrites the search intent to `Snickers шоколадный батончик` before querying the catalog.

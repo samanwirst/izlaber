@@ -254,6 +254,48 @@ async def test_understand_search_query_uses_ai_only_for_narrative(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_understand_search_query_can_force_ai_for_short_query(monkeypatch):
+    calls: list[str] = []
+
+    async def fake_request_query_understanding(*, query, config):
+        calls.append(query)
+        return SearchQueryUnderstanding(
+            query="Windows 10 лицензионный ключ",
+            search_queries=[
+                SearchExpansion("Windows 10 лицензионный ключ"),
+                SearchExpansion("Windows 10 Pro ключ"),
+            ],
+            source="ai",
+        )
+
+    monkeypatch.setattr(ai_reranker_service, "_enabled", lambda _config: True)
+    monkeypatch.setattr(
+        ai_reranker_service,
+        "_request_query_understanding",
+        fake_request_query_understanding,
+    )
+
+    direct = await understand_search_query(
+        query="виндовс 10",
+        config=Config(bot=BotConfig(token="test"), openai_api_key="key"),
+    )
+    forced = await understand_search_query(
+        query="виндовс 10",
+        config=Config(bot=BotConfig(token="test"), openai_api_key="key"),
+        force_ai=True,
+    )
+
+    assert direct.query == "виндовс 10"
+    assert direct.source == "original"
+    assert forced.query == "Windows 10 лицензионный ключ"
+    assert [expansion.query for expansion in forced.search_queries] == [
+        "Windows 10 лицензионный ключ",
+        "Windows 10 Pro ключ",
+    ]
+    assert calls == ["виндовс 10"]
+
+
+@pytest.mark.asyncio
 async def test_text_search_uses_understood_query_for_candidates(monkeypatch):
     original_query = (
         "Я как то был в Турции и увидел очень красивую тарелку из интересного "
@@ -693,6 +735,58 @@ async def test_text_search_timeout_replaces_status_message(monkeypatch):
     assert replacements == ["Search took too long. Try a simpler query or repeat it later."]
 
 
+@pytest.mark.asyncio
+async def test_text_search_ai_rescue_can_finish_before_timeout(monkeypatch):
+    cancelled = False
+    delivered: list[str] = []
+
+    async def slow_search(**_kwargs):
+        nonlocal cancelled
+        try:
+            await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            cancelled = True
+            raise
+
+    async def fake_rescue(**_kwargs):
+        return common_handlers.TextSearchRescueResult(
+            query="Windows 10 лицензионный ключ",
+            products=[product(1, "Windows 10 Pro key")],
+            sponsored_products=[],
+            candidate_offset=1,
+        )
+
+    async def fake_deliver(**kwargs):
+        delivered.append(kwargs["rescue_result"].query)
+
+    monkeypatch.setattr(common_handlers, "_run_text_search", slow_search)
+    monkeypatch.setattr(common_handlers, "_run_text_search_ai_rescue", fake_rescue)
+    monkeypatch.setattr(common_handlers, "_deliver_text_search_ai_rescue", fake_deliver)
+
+    message = Message(
+        message_id=1,
+        date=datetime.now(),
+        chat=Chat(id=10, type="private"),
+        from_user=User(id=1, is_bot=False, first_name="Test", language_code="ru"),
+        text="виндовс 10",
+    )
+    config = Config(
+        bot=BotConfig(token="test"),
+        openai_api_key="key",
+        search_timeout_seconds=1,
+        search_ai_rescue_after_seconds=0.01,
+    )
+
+    await _run_text_search_with_timeout(
+        message=message,
+        config=config,
+        query="виндовс 10",
+    )
+
+    assert cancelled is True
+    assert delivered == ["Windows 10 лицензионный ключ"]
+
+
 def test_ai_rank_keeps_unranked_products_after_ranked_ids():
     products = [product(1, "A"), product(2, "B"), product(3, "C")]
 
@@ -1093,6 +1187,7 @@ def test_config_exposes_rate_limit_defaults():
     assert config.ai_rate_limit_max_events == 12
     assert config.ai_rate_limit_window_seconds == 3600.0
     assert config.search_timeout_seconds == 60.0
+    assert config.search_ai_rescue_after_seconds == 30.0
     assert config.marketplace_custom_emoji_ids == {}
 
 

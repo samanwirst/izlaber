@@ -2,7 +2,7 @@ import asyncio
 import logging
 import re
 from contextlib import suppress
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from io import BytesIO
 from uuid import uuid4
 
@@ -59,6 +59,16 @@ UZUM_PRODUCT_ID_RE = re.compile(
     r"(?:https?://)?(?:www\.)?uzum\.uz/\S*/product/\S+-(\d+)",
     re.IGNORECASE,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class TextSearchRescueResult:
+    query: str
+    products: list[ProductDTO]
+    sponsored_products: list[ProductDTO]
+    candidate_offset: int
+
+
 V_NECK_RE = re.compile(
     r"(?<![0-9a-zа-яё])v\s*[-–—]?\s*(?:образн\w*|вырез\w*)"
     r"|(?<![0-9a-zа-яё])v[-\s]?neck(?![0-9a-zа-яё])"
@@ -1424,6 +1434,215 @@ async def _load_sponsored_products(
         return []
 
 
+def _search_ai_rescue_after_seconds(config: Config) -> float | None:
+    rescue_after = config.search_ai_rescue_after_seconds
+    if rescue_after <= 0 or rescue_after >= config.search_timeout_seconds:
+        return None
+    if not (
+        config.openai_api_key
+        and config.openai_rerank_enabled
+        and config.openai_search_expand_enabled
+        and ai_runtime_state.ai_allowed()
+    ):
+        return None
+    return rescue_after
+
+
+async def _run_text_search_ai_rescue(
+    *,
+    message: Message,
+    config: Config,
+    query: str,
+    input_type: str,
+    intro_key: str,
+) -> TextSearchRescueResult | None:
+    language = language_from_message(message)
+    query = " ".join(query.split())
+    if not query:
+        return None
+
+    await message.answer(
+        format_message("search_ai_rescue", language),
+        disable_web_page_preview=True,
+    )
+    await track_message_event(
+        config=config,
+        message=message,
+        event_type="search_ai_rescue_started",
+        language_code=language,
+        input_type=input_type,
+        query=query,
+        metadata={"after_seconds": config.search_ai_rescue_after_seconds},
+    )
+
+    understanding = await understand_search_query(query=query, config=config, force_ai=True)
+    rescue_query = understanding.query or query
+    expansions = understanding.search_queries or [SearchExpansion(rescue_query)]
+    if understanding.query and (
+        understanding.query != query or understanding.source != "original"
+    ):
+        await track_message_event(
+            config=config,
+            message=message,
+            event_type="search_query_understood",
+            language_code=language,
+            input_type=input_type,
+            query=understanding.query,
+            metadata={
+                "original_query": query,
+                "source": f"{understanding.source}_rescue",
+                "search_queries": [
+                    {
+                        "query": expansion.query,
+                        "min_price": expansion.min_price,
+                        "max_price": expansion.max_price,
+                    }
+                    for expansion in expansions
+                ],
+            },
+        )
+
+    try:
+        async with ServerAPIClient(
+            config.server_api_base_url,
+            config.bot_api_key,
+            timeout=config.server_api_timeout,
+        ) as client:
+            products = await _load_expanded_products(
+                client=client,
+                expansions=expansions,
+                config=config,
+            )
+    except ServerAPIError as error:
+        logger.warning("AI rescue product search failed for query %r: %s", query, error)
+        return None
+
+    products = _merge_unique_products([], products)
+    if products:
+        products = await rerank_products(query=rescue_query, products=products, config=config)
+
+    sponsored_products = await _load_sponsored_products(
+        query=rescue_query,
+        language_code=language,
+        config=config,
+    )
+    if sponsored_products:
+        products = _exclude_product_ids(
+            products,
+            {product.id for product in sponsored_products},
+        )
+    if not products and not sponsored_products:
+        await track_message_event(
+            config=config,
+            message=message,
+            event_type="search_ai_rescue_no_results",
+            language_code=language,
+            input_type=input_type,
+            query=rescue_query,
+            result_count=0,
+            metadata={"original_query": query},
+        )
+        return None
+
+    await track_message_event(
+        config=config,
+        message=message,
+        event_type="search_ai_rescue_succeeded",
+        language_code=language,
+        input_type=input_type,
+        query=rescue_query,
+        result_count=len(products) + len(sponsored_products),
+        metadata={
+            "original_query": query,
+            "intro_key": intro_key,
+            "search_queries": [expansion.query for expansion in expansions],
+        },
+    )
+    return TextSearchRescueResult(
+        query=rescue_query,
+        products=products,
+        sponsored_products=sponsored_products,
+        candidate_offset=len(products),
+    )
+
+
+async def _deliver_text_search_ai_rescue(
+    *,
+    message: Message,
+    config: Config,
+    status_message: Message | None,
+    language: str,
+    intro_key: str,
+    rescue_result: TextSearchRescueResult,
+) -> None:
+    if not rescue_result.products:
+        search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
+        if status_message is not None:
+            await _replace_status_message(
+                status_message,
+                format_message("sponsored_found_intro", language),
+                language=language,
+                reply_markup=main_menu_keyboard(language),
+            )
+        else:
+            await message.answer(
+                format_message("sponsored_found_intro", language),
+                reply_markup=main_menu_keyboard(language),
+            )
+        await _send_products(
+            message,
+            rescue_result.sponsored_products,
+            start_index=1,
+            language_code=language,
+            query=rescue_result.query,
+            config=config,
+        )
+        return
+
+    products = rescue_result.products[: config.product_search_limit]
+    search_state.set(
+        chat_id=message.chat.id,
+        user_id=_user_id(message),
+        query=rescue_result.query,
+        products=rescue_result.products,
+        offset=len(products),
+        candidate_offset=rescue_result.candidate_offset,
+    )
+    if status_message is not None:
+        await _replace_status_message(
+            status_message,
+            format_message(intro_key, language, query=rescue_result.query, count=len(products)),
+            language=language,
+            reply_markup=more_results_keyboard(language),
+        )
+    else:
+        await message.answer(
+            format_message(intro_key, language, query=rescue_result.query, count=len(products)),
+            reply_markup=more_results_keyboard(language),
+        )
+    if rescue_result.sponsored_products:
+        await message.answer(
+            format_message("sponsored_found_intro", language),
+            disable_web_page_preview=True,
+        )
+        await _send_products(
+            message,
+            rescue_result.sponsored_products,
+            start_index=1,
+            language_code=language,
+            query=rescue_result.query,
+            config=config,
+        )
+    await _send_products(
+        message,
+        products,
+        start_index=1,
+        language_code=language,
+        query=rescue_result.query,
+        config=config,
+    )
+
+
 async def _run_text_search_with_timeout(
     *,
     message: Message,
@@ -1436,6 +1655,7 @@ async def _run_text_search_with_timeout(
     intro_key: str = "found_intro",
 ) -> None:
     language = language_from_message(message)
+    rescue_after = _search_ai_rescue_after_seconds(config)
     try:
         await _wait_for_search_with_progress(
             _run_text_search(
@@ -1451,6 +1671,22 @@ async def _run_text_search_with_timeout(
             timeout=config.search_timeout_seconds,
             message=message,
             language=language,
+            rescue_after=rescue_after,
+            rescue_factory=lambda: _run_text_search_ai_rescue(
+                message=message,
+                config=config,
+                query=query,
+                input_type=input_type,
+                intro_key=intro_key,
+            ),
+            rescue_delivery=lambda rescue_result: _deliver_text_search_ai_rescue(
+                message=message,
+                config=config,
+                status_message=status_message,
+                language=language,
+                intro_key=intro_key,
+                rescue_result=rescue_result,
+            ),
         )
     except TimeoutError:
         search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
@@ -1470,15 +1706,70 @@ async def _wait_for_search_with_progress(
     timeout: float,
     message: Message,
     language: str,
+    rescue_after: float | None = None,
+    rescue_factory=None,
+    rescue_delivery=None,
 ):
     task = asyncio.create_task(awaitable)
     progress_task = asyncio.create_task(_send_search_progress_pings(message, language))
+    rescue_task = (
+        asyncio.create_task(_run_search_ai_rescue_after_delay(rescue_after, rescue_factory))
+        if rescue_after is not None and rescue_factory is not None
+        else None
+    )
     try:
-        return await asyncio.wait_for(task, timeout=timeout)
+        if rescue_task is None:
+            return await asyncio.wait_for(task, timeout=timeout)
+
+        deadline = asyncio.get_running_loop().time() + timeout
+        pending = {task, rescue_task}
+        while pending:
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                raise TimeoutError
+            done, pending = await asyncio.wait(
+                pending,
+                timeout=remaining,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if not done:
+                raise TimeoutError
+            if task in done:
+                return task.result()
+            if rescue_task in done:
+                rescue_result = rescue_task.result()
+                if rescue_result:
+                    task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await task
+                    if rescue_delivery is not None:
+                        await rescue_delivery(rescue_result)
+                    return True
+                pending.discard(rescue_task)
+        return await task
     finally:
+        task.cancel()
+        if rescue_task is not None:
+            rescue_task.cancel()
         progress_task.cancel()
         with suppress(asyncio.CancelledError):
+            await task
+        if rescue_task is not None:
+            with suppress(asyncio.CancelledError):
+                await rescue_task
+        with suppress(asyncio.CancelledError):
             await progress_task
+
+
+async def _run_search_ai_rescue_after_delay(delay: float, rescue_factory):
+    await asyncio.sleep(delay)
+    try:
+        return await rescue_factory()
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("AI search rescue failed.")
+        return False
 
 
 async def _send_search_progress_pings(message: Message, language: str) -> None:
