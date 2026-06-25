@@ -978,10 +978,13 @@ async def _run_text_search(
     empty_key: str = "empty_query",
     no_results_key: str = "no_results",
     intro_key: str = "found_intro",
+    stop_progress=None,
 ) -> None:
     language = language_from_message(message)
     query = " ".join(query.split())
     if not query:
+        if stop_progress is not None:
+            stop_progress()
         if status_message is not None:
             await _replace_status_message(
                 status_message,
@@ -1101,6 +1104,8 @@ async def _run_text_search(
             query=query,
             result_count=0,
         )
+        if stop_progress is not None:
+            stop_progress()
         if status_message is not None:
             await _replace_status_message(
                 status_message,
@@ -1117,6 +1122,8 @@ async def _run_text_search(
 
     if not ranked_products:
         search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
+        if stop_progress is not None:
+            stop_progress()
         if status_message is not None:
             await _replace_status_message(
                 status_message,
@@ -1148,6 +1155,8 @@ async def _run_text_search(
         offset=len(products),
         candidate_offset=candidate_offset,
     )
+    if stop_progress is not None:
+        stop_progress()
     if status_message is not None:
         await _replace_status_message(
             status_message,
@@ -1660,6 +1669,7 @@ async def _run_text_search_with_timeout(
 ) -> None:
     language = language_from_message(message)
     rescue_after = _search_ai_rescue_after_seconds(config)
+    progress_stop_event = asyncio.Event()
     try:
         await _wait_for_search_with_progress(
             _run_text_search(
@@ -1671,10 +1681,12 @@ async def _run_text_search_with_timeout(
                 empty_key=empty_key,
                 no_results_key=no_results_key,
                 intro_key=intro_key,
+                stop_progress=progress_stop_event.set,
             ),
             timeout=config.search_timeout_seconds,
             message=message,
             language=language,
+            progress_stop_event=progress_stop_event,
             rescue_after=rescue_after,
             rescue_factory=lambda: _run_text_search_ai_rescue(
                 message=message,
@@ -1710,12 +1722,16 @@ async def _wait_for_search_with_progress(
     timeout: float,
     message: Message,
     language: str,
+    progress_stop_event: asyncio.Event | None = None,
     rescue_after: float | None = None,
     rescue_factory=None,
     rescue_delivery=None,
 ):
     task = asyncio.create_task(awaitable)
-    progress_task = asyncio.create_task(_send_search_progress_pings(message, language))
+    progress_stop_event = progress_stop_event or asyncio.Event()
+    progress_task = asyncio.create_task(
+        _send_search_progress_pings(message, language, stop_event=progress_stop_event)
+    )
     rescue_task = (
         asyncio.create_task(_run_search_ai_rescue_after_delay(rescue_after, rescue_factory))
         if rescue_after is not None and rescue_factory is not None
@@ -1746,12 +1762,17 @@ async def _wait_for_search_with_progress(
                     task.cancel()
                     with suppress(asyncio.CancelledError):
                         await task
+                    progress_stop_event.set()
+                    progress_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await progress_task
                     if rescue_delivery is not None:
                         await rescue_delivery(rescue_result)
                     return True
                 pending.discard(rescue_task)
         return await task
     finally:
+        progress_stop_event.set()
         task.cancel()
         if rescue_task is not None:
             rescue_task.cancel()
@@ -1776,9 +1797,21 @@ async def _run_search_ai_rescue_after_delay(delay: float, rescue_factory):
         return False
 
 
-async def _send_search_progress_pings(message: Message, language: str) -> None:
+async def _send_search_progress_pings(
+    message: Message,
+    language: str,
+    *,
+    stop_event: asyncio.Event | None = None,
+) -> None:
+    stop_event = stop_event or asyncio.Event()
     for delay in SEARCH_PROGRESS_DELAYS_SECONDS:
-        await asyncio.sleep(delay)
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=delay)
+            return
+        except TimeoutError:
+            pass
+        if stop_event.is_set():
+            return
         await message.answer(
             format_message("search_still_processing", language),
             disable_web_page_preview=True,

@@ -384,6 +384,61 @@ async def test_text_search_uses_understood_query_for_candidates(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_text_search_stops_progress_before_sending_results(monkeypatch):
+    events: list[str] = []
+
+    async def fake_understand_search_query(*, query, config):
+        return SearchQueryUnderstanding(
+            query=query,
+            search_queries=[SearchExpansion(query)],
+            source="original",
+        )
+
+    async def fake_load_ranked_candidates(**_kwargs):
+        return [product(1, "Windows 10 Pro key")]
+
+    async def fake_load_sponsored_products(**_kwargs):
+        return []
+
+    async def fake_track_message_event(**_kwargs):
+        return None
+
+    async def fake_replace_status_message(*_args, **_kwargs):
+        events.append("intro")
+
+    async def fake_send_products(*_args, **_kwargs):
+        events.append("products")
+
+    def stop_progress():
+        events.append("stop_progress")
+
+    monkeypatch.setattr(common_handlers, "understand_search_query", fake_understand_search_query)
+    monkeypatch.setattr(common_handlers, "_load_ranked_candidates", fake_load_ranked_candidates)
+    monkeypatch.setattr(common_handlers, "_load_sponsored_products", fake_load_sponsored_products)
+    monkeypatch.setattr(common_handlers, "track_message_event", fake_track_message_event)
+    monkeypatch.setattr(common_handlers, "_replace_status_message", fake_replace_status_message)
+    monkeypatch.setattr(common_handlers, "_send_products", fake_send_products)
+
+    message = Message(
+        message_id=1,
+        date=datetime.now(),
+        chat=Chat(id=10, type="private"),
+        from_user=User(id=1, is_bot=False, first_name="Test", language_code="ru"),
+        text="виндовс 10",
+    )
+
+    await common_handlers._run_text_search(
+        message=message,
+        config=Config(bot=BotConfig(token="test")),
+        query="виндовс 10",
+        status_message=object(),
+        stop_progress=stop_progress,
+    )
+
+    assert events == ["stop_progress", "intro", "products"]
+
+
+@pytest.mark.asyncio
 async def test_ranked_candidate_search_uses_overall_search_timeout(monkeypatch):
     timeouts: list[float] = []
 
@@ -554,8 +609,10 @@ async def test_replace_status_message_sends_new_message_for_reply_keyboard():
 async def test_search_progress_pings_use_requested_schedule(monkeypatch):
     delays: list[float] = []
 
-    async def fake_sleep(delay: float) -> None:
-        delays.append(delay)
+    async def fake_wait_for(awaitable, timeout: float) -> None:
+        delays.append(timeout)
+        awaitable.close()
+        raise TimeoutError
 
     class FakeMessage:
         def __init__(self) -> None:
@@ -564,13 +621,32 @@ async def test_search_progress_pings_use_requested_schedule(monkeypatch):
         async def answer(self, text, disable_web_page_preview=True):
             self.answered.append((text, disable_web_page_preview))
 
-    monkeypatch.setattr(common_handlers.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(common_handlers.asyncio, "wait_for", fake_wait_for)
     message = FakeMessage()
 
     await _send_search_progress_pings(message, "ru")
 
     assert delays == [5, 10, 10, 10, 10, 10]
     assert message.answered == [("все еще ищу....", True)] * 6
+
+
+@pytest.mark.asyncio
+async def test_search_progress_stops_when_requested(monkeypatch):
+    class FakeMessage:
+        def __init__(self) -> None:
+            self.answered: list[str] = []
+
+        async def answer(self, text, disable_web_page_preview=True):
+            self.answered.append(text)
+
+    monkeypatch.setattr(common_handlers, "SEARCH_PROGRESS_DELAYS_SECONDS", (0.01, 0.01))
+    stop_event = asyncio.Event()
+    stop_event.set()
+    message = FakeMessage()
+
+    await _send_search_progress_pings(message, "ru", stop_event=stop_event)
+
+    assert message.answered == []
 
 
 def test_rate_limit_event_scopes_target_search_and_ai_inputs():
@@ -836,6 +912,44 @@ async def test_text_search_ai_rescue_can_finish_before_timeout(monkeypatch):
 
     assert cancelled is True
     assert delivered == ["Windows 10 лицензионный ключ"]
+
+
+@pytest.mark.asyncio
+async def test_progress_stops_before_ai_rescue_delivery(monkeypatch):
+    class FakeMessage:
+        def __init__(self) -> None:
+            self.answered: list[str] = []
+
+        async def answer(self, text, disable_web_page_preview=True):
+            self.answered.append(text)
+
+    async def slow_search():
+        await asyncio.sleep(1)
+
+    async def rescue_factory():
+        return object()
+
+    delivery_ping_counts: list[int] = []
+
+    async def rescue_delivery(_result):
+        delivery_ping_counts.append(len(message.answered))
+        await asyncio.sleep(0.03)
+        delivery_ping_counts.append(len(message.answered))
+
+    monkeypatch.setattr(common_handlers, "SEARCH_PROGRESS_DELAYS_SECONDS", (0.001,) * 20)
+    message = FakeMessage()
+
+    await common_handlers._wait_for_search_with_progress(
+        slow_search(),
+        timeout=1,
+        message=message,
+        language="ru",
+        rescue_after=0.01,
+        rescue_factory=rescue_factory,
+        rescue_delivery=rescue_delivery,
+    )
+
+    assert delivery_ping_counts[1] == delivery_ping_counts[0]
 
 
 def test_ai_rank_keeps_unranked_products_after_ranked_ids():
