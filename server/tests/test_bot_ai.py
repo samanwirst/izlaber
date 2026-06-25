@@ -38,7 +38,7 @@ from bot.handlers.common import (
 )
 from bot.keyboards.main_menu import more_results_keyboard
 from bot.middlewares import rate_limit as rate_limit_middleware
-from bot.middlewares.consent import _is_consent_event, _send_consent_prompt
+from bot.middlewares.consent import ConsentMiddleware, _is_consent_event, _send_consent_prompt
 from bot.middlewares.rate_limit import (
     AI_SCOPE,
     GENERAL_SCOPE,
@@ -73,7 +73,7 @@ from bot.services.api_client import (
     product_click_url,
     render_product_card,
 )
-from bot.services.consent_store import UserConsentStore
+from bot.services.consent_store import UserConsentStore, user_consents
 from bot.services.openai_billing import OpenAICostSummary, _merge_cost_buckets
 from bot.services.rate_limit import RateLimitRule, SlidingWindowRateLimiter, UserInFlightGate
 from bot.services.search_state import SearchStateStore
@@ -598,6 +598,49 @@ def test_consent_middleware_only_allows_exact_consent_command():
     assert _is_consent_event(targeted_consent_message) is True
     assert _is_consent_event(accept_button_message) is True
     assert _is_consent_event(bypass_attempt) is False
+
+
+@pytest.mark.asyncio
+async def test_consent_middleware_requires_private_start_before_guest_mode(monkeypatch):
+    answered_guest_queries: list[tuple[str, object]] = []
+    user_consents.set_cached_active(90001, False)
+
+    class FakeBot:
+        async def get_me(self):
+            return SimpleNamespace(username="izlaber_bot")
+
+        async def answer_guest_query(self, *, guest_query_id, result):
+            answered_guest_queries.append((guest_query_id, result))
+
+    async def fail_answer(self, text, **kwargs):
+        pytest.fail("Guest consent gate must not send a direct message prompt")
+
+    monkeypatch.setattr(Message, "bot", property(lambda self: FakeBot()))
+    monkeypatch.setattr(Message, "answer", fail_answer)
+
+    message = Message(
+        message_id=1,
+        date=datetime.now(),
+        chat=Chat(id=10, type="private"),
+        from_user=User(id=90001, is_bot=False, first_name="Guest", language_code="ru"),
+        direct_messages_topic=DirectMessagesTopic(topic_id=77),
+        guest_query_id="guest-query-1",
+        text="@izlaber_bot зеленая ваза",
+    )
+    handler_called = False
+
+    async def handler(_event, _data):
+        nonlocal handler_called
+        handler_called = True
+
+    await ConsentMiddleware()(handler, message, {"config": Config(bot=BotConfig(token="test"))})
+
+    assert handler_called is False
+    assert len(answered_guest_queries) == 1
+    guest_query_id, result = answered_guest_queries[0]
+    assert guest_query_id == "guest-query-1"
+    assert result.title == "Сначала откройте бота в ЛС"
+    assert "@izlaber_bot" in result.input_message_content.message_text
 
 
 @pytest.mark.asyncio

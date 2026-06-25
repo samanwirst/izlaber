@@ -108,6 +108,15 @@ LOCALES: dict[str, LocaleCopy] = {
             "guest_need_query_text": (
                 "Bot nomi yoniga mahsulot yozing, masalan: @izlaber_bot iphone 15."
             ),
+            "guest_start_required_title": "Avval botni shaxsiy chatda oching",
+            "guest_start_required_description": (
+                "Start tugmasini bosing va shartlarni tasdiqlang."
+            ),
+            "guest_start_required_text": (
+                "Guest Mode ishlashi uchun avval {bot_reference} botini shaxsiy chatda "
+                "oching, Start tugmasini bosing va shartlarni tasdiqlang. Keyin bu "
+                "yerda so'rovni qayta yuboring."
+            ),
             "guest_search_started_title": "Qidiryapman...",
             "guest_search_started_text": "Eng yaxshi variantlarni tanlayapman...",
             "guest_catalog_unavailable_title": "Katalog vaqtincha ishlamayapti",
@@ -324,6 +333,15 @@ LOCALES: dict[str, LocaleCopy] = {
             "guest_need_query_title": "Что искать?",
             "guest_need_query_text": (
                 "Напишите товар рядом с упоминанием бота, например: @izlaber_bot iphone 15."
+            ),
+            "guest_start_required_title": "Сначала откройте бота в ЛС",
+            "guest_start_required_description": (
+                "Нажмите Start и подтвердите условия."
+            ),
+            "guest_start_required_text": (
+                "Чтобы пользоваться Guest Mode, сначала откройте {bot_reference} "
+                "в личных сообщениях, нажмите Start и подтвердите условия. "
+                "Потом повторите запрос здесь."
             ),
             "guest_search_started_title": "Ищу...",
             "guest_search_started_text": "Выбираю лучшие варианты...",
@@ -542,6 +560,14 @@ LOCALES: dict[str, LocaleCopy] = {
             "guest_need_query_title": "What should I search?",
             "guest_need_query_text": (
                 "Write a product next to the bot mention, for example: @izlaber_bot iphone 15."
+            ),
+            "guest_start_required_title": "Open the bot privately first",
+            "guest_start_required_description": (
+                "Press Start and confirm the terms."
+            ),
+            "guest_start_required_text": (
+                "To use Guest Mode, first open {bot_reference} in a private chat, "
+                "press Start, and confirm the terms. Then repeat the request here."
             ),
             "guest_search_started_title": "Searching...",
             "guest_search_started_text": "Picking the best matches...",
