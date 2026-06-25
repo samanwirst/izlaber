@@ -165,6 +165,12 @@ def test_search_query_normalizes_color_attribute_terms():
     assert query_terms("зеленая ваза") == ["ваза", "attrcolorgreen"]
     assert query_terms("изумрудная ваза") == ["ваза", "attrcolorgreen"]
     assert query_terms("лаймовая ваза") == ["ваза", "attrcolorgreen"]
+    assert query_terms("салатовая ваза") == ["ваза", "attrcolorgreen"]
+    assert query_terms("фисташковая ваза") == ["ваза", "attrcolorgreen"]
+    assert query_terms("оливковая ваза") == ["ваза", "attrcolorgreen"]
+    assert query_terms("салатница") == ["салатница"]
+    assert query_terms("фисташки") == ["фисташки"]
+    assert query_terms("оливки") == ["оливки"]
 
 
 def test_search_query_normalizes_generic_phone_case_intent():
@@ -351,7 +357,19 @@ def test_search_uses_specs_color_as_priority_attribute(db):
     white["title"] = "Декоративная ваза для цветов"
     white["category_path_text"] = "Вазы"
     white["specs"] = {"Цвет": "Белый", "Материал": "Стекло"}
-    upsert_products(marketplace_code="uzum", products=[green, white])
+    pistachio_snack = product_payload(
+        source_product_id="pistachio-snack-vase",
+        content_hash="hash-pistachio-snack-vase",
+    )
+    pistachio_snack["title"] = "Набор богемы, ваза для сухофруктов и фисташек"
+    pistachio_snack["category_path_text"] = "Вазы"
+    salad_bowl = product_payload(
+        source_product_id="salad-bowl-vase",
+        content_hash="hash-salad-bowl-vase",
+    )
+    salad_bowl["title"] = "Конфетница, фруктовница, салатница, богема, ваза"
+    salad_bowl["category_path_text"] = "Вазы"
+    upsert_products(marketplace_code="uzum", products=[green, white, pistachio_snack, salad_bowl])
 
     product_ids = search_product_ids(
         "зеленая ваза",
