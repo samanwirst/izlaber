@@ -21,6 +21,9 @@ Do not expose these endpoints without internal auth.
 - Product list responses intentionally use `ProductCardSerializer` and a reduced queryset.
 - Preserve pagination caps in views. Current product list/visual limits are capped at 100.
 - Keep search candidate sets bounded before AI reranking.
+- Preserve attribute-aware search terms. Queries such as `зеленая ваза` should
+  normalize color words to color attribute tokens and match product `specs`, not
+  relax to ordinary non-green products while color-matching products exist.
 - For unfiltered bot product search, preserve marketplace diversity: the server should
   blend top-ranked Uzum and Wildberries candidates toward a 50/50 split for each
   `balance_page_size` window, while filling shortages with real matches from the
@@ -28,7 +31,10 @@ Do not expose these endpoints without internal auth.
 - Keep catalog intent rules and tests together. When changing `apps.catalog.search`, update
   the query intent matrix in `server/tests/test_ingestion.py` so accessory-vs-target cases
   such as phone cases, protective glass, straps, filters, and stickers stay covered.
-- Rebuild indexes after large imports or search-field changes.
+- Rebuild indexes after large imports or search-field changes. When
+  `product_search_text` or indexed `specs` handling changes, run
+  `rebuild_product_search_index --marketplace <code> --skip-token-index` for each
+  PostgreSQL marketplace.
 
 ## Model Changes
 

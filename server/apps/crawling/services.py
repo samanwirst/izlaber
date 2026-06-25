@@ -466,6 +466,7 @@ def _product_defaults(
             brand=payload.get("brand"),
             category_path_text=payload.get("category_path_text"),
             source_product_id=payload["source_product_id"],
+            specs=payload.get("specs"),
         ),
         "content_hash": payload["content_hash"],
         "first_seen_at": now,

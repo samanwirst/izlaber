@@ -24,6 +24,8 @@ BRAND_WEIGHT = 8
 DESCRIPTION_WEIGHT = 4
 CATEGORY_WEIGHT = 3
 SOURCE_ID_WEIGHT = 1
+SPECS_WEIGHT = 6
+MAX_SPECS_SEARCH_TEXT_LENGTH = 2000
 QUERY_SYNONYMS = {
     "айфона": {"айфон", "айфона", "iphone"},
     "айфоне": {"айфон", "айфоне", "iphone"},
@@ -393,6 +395,35 @@ PRICE_STOP_TOKENS = {
     "сум",
     "uzs",
 }
+COLOR_ATTRIBUTE_PREFIXES = {
+    "attrcolorblack": ("black", "черн", "чёрн"),
+    "attrcolorwhite": ("white", "бел", "ivory", "айвори"),
+    "attrcolorgray": ("gray", "grey", "сер", "графит", "silver", "серебр"),
+    "attrcolorred": ("red", "красн", "ал", "бордов", "burgundy", "wine"),
+    "attrcolorpink": ("pink", "розов", "фукс", "fuchsia"),
+    "attrcolororange": ("orange", "оранж", "рыж", "терракот", "terracotta"),
+    "attrcoloryellow": ("yellow", "желт", "жёлт", "золот", "gold"),
+    "attrcolorgreen": (
+        "green",
+        "lime",
+        "emerald",
+        "olive",
+        "khaki",
+        "mint",
+        "зелен",
+        "зелён",
+        "лайм",
+        "салат",
+        "изумруд",
+        "олив",
+        "хаки",
+        "мятн",
+        "фисташ",
+    ),
+    "attrcolorblue": ("blue", "navy", "голуб", "син", "лазур", "бирюз", "turquoise"),
+    "attrcolorpurple": ("purple", "violet", "фиолет", "сирен", "лилов", "лаванд"),
+    "attrcolorbrown": ("brown", "корич", "беж", "beige"),
+}
 MAX_POSTGRES_CANDIDATES = 1000
 BALANCED_MARKETPLACE_CODES = ("uzum", "wildberries")
 DEFAULT_MARKETPLACE_BALANCE_PAGE_SIZE = 10
@@ -405,17 +436,21 @@ def product_search_terms(
     brand: str | None,
     category_path_text: str | None,
     source_product_id: str | None,
+    specs: object | None = None,
 ) -> dict[str, int]:
+    specs_text = product_specs_search_text(specs)
     terms: dict[str, int] = {}
     _merge_terms(terms, tokenize(title), TITLE_WEIGHT)
     _merge_terms(terms, tokenize(brand), BRAND_WEIGHT)
     _merge_terms(terms, tokenize(description), DESCRIPTION_WEIGHT)
     _merge_terms(terms, tokenize(category_path_text), CATEGORY_WEIGHT)
     _merge_terms(terms, tokenize(source_product_id), SOURCE_ID_WEIGHT)
+    _merge_terms(terms, tokenize(specs_text), SPECS_WEIGHT)
     _merge_terms(terms, semantic_terms(title), TITLE_WEIGHT)
     _merge_terms(terms, semantic_terms(brand), BRAND_WEIGHT)
     _merge_terms(terms, semantic_terms(description), DESCRIPTION_WEIGHT)
     _merge_terms(terms, semantic_terms(category_path_text), CATEGORY_WEIGHT)
+    _merge_terms(terms, semantic_terms(specs_text), SPECS_WEIGHT)
     return terms
 
 
@@ -426,22 +461,26 @@ def product_search_text(
     brand: str | None,
     category_path_text: str | None,
     source_product_id: str | None,
+    specs: object | None = None,
 ) -> str:
     title_text = " ".join([title or ""] * 3)
     brand_text = " ".join([brand or ""] * 2)
     description_text = description or ""
+    specs_text = product_specs_search_text(specs)
     semantic_text = " ".join(
         [
             *semantic_terms(title),
             *semantic_terms(brand),
             *semantic_terms(description),
             *semantic_terms(category_path_text),
+            *semantic_terms(specs_text),
         ]
     )
     parts = [
         title_text,
         brand_text,
         description_text,
+        specs_text,
         category_path_text or "",
         str(source_product_id or ""),
         semantic_text,
@@ -459,6 +498,7 @@ def replace_product_search_terms(product) -> None:
         brand=product.brand,
         category_path_text=product.category_path_text,
         source_product_id=product.source_product_id,
+        specs=product.specs,
     )
     ProductSearchTerm.objects.filter(product=product).delete()
     ProductSearchTerm.objects.bulk_create(
@@ -799,24 +839,39 @@ def query_terms(query: str) -> list[str]:
     semantic = query_semantic_terms(query, tokens)
     skip_tokens = _query_skip_tokens(semantic, tokens)
     skip_tokens.update(_price_skip_tokens(tokens))
+    color_terms = color_attribute_terms(tokens)
+    if color_terms:
+        skip_tokens.update(_color_query_skip_tokens(tokens))
 
     expanded: list[str] = []
     seen: set[str] = set()
-    for term in semantic:
+
+    def append_term(term: str) -> bool:
+        if not term or term in seen:
+            return False
         seen.add(term)
         expanded.append(term)
-        if len(expanded) >= MAX_QUERY_TOKENS:
+        return len(expanded) >= MAX_QUERY_TOKENS
+
+    for term in semantic:
+        if append_term(term):
             return expanded
 
+    color_inserted = False
     for token in tokens:
         if token in skip_tokens:
             continue
         for synonym in QUERY_SYNONYMS.get(token, {token}):
-            if synonym in seen:
-                continue
-            seen.add(synonym)
-            expanded.append(synonym)
-            if len(expanded) >= MAX_QUERY_TOKENS:
+            if append_term(synonym):
+                return expanded
+        if not color_inserted:
+            for color_term in color_terms:
+                if append_term(color_term):
+                    return expanded
+            color_inserted = True
+    if not color_inserted:
+        for color_term in color_terms:
+            if append_term(color_term):
                 return expanded
     return expanded
 
@@ -877,6 +932,7 @@ def semantic_terms(value: str | None) -> list[str]:
 
     terms: list[str] = []
     tokens = set(tokenize(value))
+    terms.extend(color_attribute_terms(tokens))
     if tokens & SWEATER_TOKENS:
         terms.append("sweater")
     if tokens & NECKLINE_TOKENS:
@@ -901,6 +957,63 @@ def query_semantic_terms(query: str, tokens: list[str] | None = None) -> list[st
     elif token_set & NECKLINE_TOKENS:
         terms.append("neckline")
     return terms
+
+
+def product_specs_search_text(specs: object | None) -> str:
+    parts: list[str] = []
+    _flatten_specs_search_parts(specs, parts)
+    return " ".join(parts)[:MAX_SPECS_SEARCH_TEXT_LENGTH]
+
+
+def _flatten_specs_search_parts(value: object, parts: list[str]) -> None:
+    if value is None or _parts_length(parts) >= MAX_SPECS_SEARCH_TEXT_LENGTH:
+        return
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if key is not None:
+                parts.append(str(key))
+            _flatten_specs_search_parts(item, parts)
+            if _parts_length(parts) >= MAX_SPECS_SEARCH_TEXT_LENGTH:
+                return
+        return
+    if isinstance(value, (list, tuple, set)):
+        for item in value:
+            _flatten_specs_search_parts(item, parts)
+            if _parts_length(parts) >= MAX_SPECS_SEARCH_TEXT_LENGTH:
+                return
+        return
+    if isinstance(value, (str, int, float, bool)):
+        text = str(value).strip()
+        if text:
+            parts.append(text)
+
+
+def _parts_length(parts: list[str]) -> int:
+    return sum(len(part) + 1 for part in parts)
+
+
+def color_attribute_terms(tokens: Iterable[str]) -> list[str]:
+    token_set = set(tokens)
+    terms: list[str] = []
+    for attribute, prefixes in COLOR_ATTRIBUTE_PREFIXES.items():
+        if any(_token_matches_prefixes(token, prefixes) for token in token_set):
+            terms.append(attribute)
+    return terms
+
+
+def _color_query_skip_tokens(tokens: Iterable[str]) -> set[str]:
+    return {
+        token
+        for token in tokens
+        if any(
+            _token_matches_prefixes(token, prefixes)
+            for prefixes in COLOR_ATTRIBUTE_PREFIXES.values()
+        )
+    }
+
+
+def _token_matches_prefixes(token: str, prefixes: Iterable[str]) -> bool:
+    return any(token == prefix or token.startswith(prefix) for prefix in prefixes)
 
 
 def tokenize(value: str | None) -> list[str]:

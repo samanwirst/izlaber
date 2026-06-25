@@ -193,6 +193,7 @@ def _row_value(table: str, row: sqlite3.Row, column: str) -> Any:
             brand=row["brand"],
             category_path_text=row["category_path_text"],
             source_product_id=row["source_product_id"],
+            specs=row["specs"] if "specs" in row.keys() else None,
         )
     return row[column]
 

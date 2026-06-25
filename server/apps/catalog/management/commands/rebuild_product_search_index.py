@@ -50,6 +50,7 @@ class Command(BaseCommand):
             "brand",
             "category_path_text",
             "source_product_id",
+            "specs",
             "is_active",
             "rating",
             "reviews_count",
@@ -71,6 +72,7 @@ class Command(BaseCommand):
                 brand,
                 category_path_text,
                 source_product_id,
+                specs,
                 is_active,
                 rating,
                 reviews_count,
@@ -85,6 +87,7 @@ class Command(BaseCommand):
                         brand=brand,
                         category_path_text=category_path_text,
                         source_product_id=source_product_id,
+                        specs=specs,
                     )
                 )
                 pending_products.append(
@@ -96,6 +99,7 @@ class Command(BaseCommand):
                             brand=brand,
                             category_path_text=category_path_text,
                             source_product_id=source_product_id,
+                            specs=specs,
                         ),
                     )
                 )

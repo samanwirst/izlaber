@@ -51,7 +51,10 @@
 
 ## Search Architecture
 
-- PostgreSQL path uses `Product.search_text`, GIN/trigram behavior, price filters, and fallback relaxation.
+- PostgreSQL path uses `Product.search_text`, GIN/trigram behavior, price filters,
+  and fallback relaxation. `search_text` includes title, brand, description,
+  category, source ID, selected `specs`, and normalized attribute tokens such as
+  color groups.
 - SQLite path uses `ProductSearchTerm` rows as the fallback token index.
 - Bot-side AI rerank is optional and should operate on a bounded candidate set from the server.
 - Photo search combines exact/near cover fingerprint matching with optional visual rerank.

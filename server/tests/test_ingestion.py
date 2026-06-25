@@ -153,9 +153,18 @@ def test_search_normalizes_v_neck_sweater_query():
 
 
 def test_search_query_skips_price_noise_and_extracts_price_filter():
-    assert query_terms("кроссовки белые до 300 тысяч") == ["кроссовки", "белые"]
+    assert query_terms("кроссовки белые до 300 тысяч") == [
+        "кроссовки",
+        "attrcolorwhite",
+    ]
     assert query_price_filters("кроссовки белые до 300 тысяч") == (None, 300000)
     assert query_terms("компрессионка") == ["compressionwear"]
+
+
+def test_search_query_normalizes_color_attribute_terms():
+    assert query_terms("зеленая ваза") == ["ваза", "attrcolorgreen"]
+    assert query_terms("изумрудная ваза") == ["ваза", "attrcolorgreen"]
+    assert query_terms("лаймовая ваза") == ["ваза", "attrcolorgreen"]
 
 
 def test_search_query_normalizes_generic_phone_case_intent():
@@ -243,6 +252,30 @@ def test_search_index_includes_description_terms():
     assert "шоколадный батончик" in search_text
 
 
+def test_search_index_includes_specs_and_normalized_color_terms():
+    terms = product_search_terms(
+        title="Декоративная ваза для цветов",
+        description=None,
+        brand=None,
+        category_path_text="Вазы",
+        source_product_id="vase-green",
+        specs={"Цвет": "Изумрудный", "Материал": "Стекло"},
+    )
+    search_text = product_search_text(
+        title="Декоративная ваза для цветов",
+        description=None,
+        brand=None,
+        category_path_text="Вазы",
+        source_product_id="vase-green",
+        specs={"Цвет": "Изумрудный", "Материал": "Стекло"},
+    )
+
+    assert terms["изумрудный"] == catalog_search.SPECS_WEIGHT
+    assert terms["attrcolorgreen"] == catalog_search.SPECS_WEIGHT
+    assert "Цвет Изумрудный" in search_text
+    assert "attrcolorgreen" in search_text
+
+
 def test_search_protects_latin_brand_in_mixed_query():
     assert protected_query_term_groups("Snickers") == [{"snickers", "сникерс"}]
     assert protected_query_term_groups("Snickers шоколадный батончик") == [
@@ -307,6 +340,34 @@ def test_search_relaxes_extra_visual_details_without_losing_product_type(db):
     )
 
     assert product_ids[0] == Product.objects.get(source_product_id="mug-1").id
+
+
+def test_search_uses_specs_color_as_priority_attribute(db):
+    green = product_payload(source_product_id="green-vase", content_hash="hash-green-vase")
+    green["title"] = "Декоративная ваза для цветов"
+    green["category_path_text"] = "Вазы"
+    green["specs"] = {"Цвет": "Изумрудный", "Материал": "Стекло"}
+    white = product_payload(source_product_id="white-vase", content_hash="hash-white-vase")
+    white["title"] = "Декоративная ваза для цветов"
+    white["category_path_text"] = "Вазы"
+    white["specs"] = {"Цвет": "Белый", "Материал": "Стекло"}
+    upsert_products(marketplace_code="uzum", products=[green, white])
+
+    product_ids = search_product_ids(
+        "зеленая ваза",
+        marketplace_code="uzum",
+        active_only=True,
+        limit=5,
+    )
+    lime_product_ids = search_product_ids(
+        "лаймовая ваза",
+        marketplace_code="uzum",
+        active_only=True,
+        limit=5,
+    )
+
+    assert product_ids == [Product.objects.get(source_product_id="green-vase").id]
+    assert lime_product_ids == product_ids
 
 
 def test_balance_ranked_product_ids_by_marketplace_targets_each_page():

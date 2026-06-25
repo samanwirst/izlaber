@@ -73,5 +73,7 @@ Audit:
 ## SQLite Vs PostgreSQL
 
 - PostgreSQL path uses `Product.search_text` and database search features.
+  `search_text` is denormalized from product text plus selected `specs` and
+  normalized attribute tokens such as color groups.
 - SQLite fallback uses `ProductSearchTerm`.
 - Keep both paths tested when search logic changes.
