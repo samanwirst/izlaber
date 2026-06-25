@@ -369,6 +369,7 @@ async def guest_search_uzum(message: Message, config: Config) -> None:
         )
         return
 
+    await _send_guest_search_started_message(message, language)
     inline_message_id = await _answer_guest_query(
         message,
         guest_query_id=guest_query_id,
@@ -2738,6 +2739,25 @@ def _strip_bot_username(text: str, bot_username: str | None) -> str:
 
 def _compact_whitespace(text: str) -> str:
     return " ".join(text.split())
+
+
+async def _send_guest_search_started_message(message: Message, language: str) -> Message | None:
+    topic_id = _direct_messages_topic_id(message)
+    try:
+        return await message.answer(
+            format_message("search_processing", language),
+            direct_messages_topic_id=topic_id,
+            disable_web_page_preview=True,
+        )
+    except TelegramAPIError as error:
+        logger.warning("Telegram rejected guest search status message: %s", error)
+        return None
+
+
+def _direct_messages_topic_id(message: Message) -> int | None:
+    topic = getattr(message, "direct_messages_topic", None)
+    topic_id = getattr(topic, "topic_id", None)
+    return topic_id if isinstance(topic_id, int) else None
 
 
 async def _answer_guest_query(

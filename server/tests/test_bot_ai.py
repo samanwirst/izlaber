@@ -1,6 +1,7 @@
 import asyncio
 from dataclasses import replace
 from datetime import datetime
+from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
@@ -805,6 +806,70 @@ def test_guest_query_strips_bot_username():
     assert _strip_bot_username("@MarketBot iphone 15", "marketbot") == "iphone 15"
     assert _strip_bot_username("найди @MarketBot ноутбук", "marketbot") == "найди ноутбук"
     assert _strip_bot_username("чехол @otherbot", "marketbot") == "чехол @otherbot"
+
+
+@pytest.mark.asyncio
+async def test_guest_search_status_message_uses_direct_message_topic():
+    answered: list[tuple[str, int | None]] = []
+
+    class FakeMessage:
+        direct_messages_topic = SimpleNamespace(topic_id=77)
+
+        async def answer(self, text, **kwargs):
+            answered.append((text, kwargs.get("direct_messages_topic_id")))
+            return SimpleNamespace(message_id=10)
+
+    status_message = await common_handlers._send_guest_search_started_message(
+        FakeMessage(),
+        "ru",
+    )
+
+    assert status_message.message_id == 10
+    assert answered == [("Выбираю лучшие варианты...", 77)]
+
+
+@pytest.mark.asyncio
+async def test_guest_search_sends_visible_status_before_loading_products(monkeypatch):
+    events: list[str] = []
+
+    class FakeBot:
+        async def get_me(self):
+            return SimpleNamespace(username="izlaber_bot")
+
+        async def answer_guest_query(self, *, guest_query_id, result):
+            events.append(f"guest_answer:{result.title}")
+            return SimpleNamespace(inline_message_id="inline-1")
+
+        async def edit_message_text(self, **_kwargs):
+            events.append("guest_edit")
+
+    class FakeMessage:
+        message_id = 1
+        text = "@izlaber_bot виндовс 10"
+        guest_query_id = "guest-1"
+        direct_messages_topic = SimpleNamespace(topic_id=77)
+        from_user = SimpleNamespace(id=111, language_code="ru")
+        chat = SimpleNamespace(id=222)
+        bot = FakeBot()
+
+        async def answer(self, text, **_kwargs):
+            events.append(f"status:{text}")
+            return SimpleNamespace(message_id=10)
+
+    async def fake_load_ranked_candidates(**_kwargs):
+        events.append("load_products")
+        return [product(1, "Windows 10 Pro key")]
+
+    monkeypatch.setattr(common_handlers, "_load_ranked_candidates", fake_load_ranked_candidates)
+
+    await common_handlers.guest_search_uzum(
+        FakeMessage(),
+        Config(bot=BotConfig(token="test")),
+    )
+
+    assert events[0] == "status:Выбираю лучшие варианты..."
+    assert "load_products" in events
+    assert events.index("status:Выбираю лучшие варианты...") < events.index("load_products")
 
 
 def test_unknown_slash_command_is_not_treated_as_search():
