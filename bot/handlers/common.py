@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+from contextlib import suppress
 from dataclasses import replace
 from io import BytesIO
 from uuid import uuid4
@@ -50,6 +51,7 @@ router = Router(name="common")
 logger = logging.getLogger(__name__)
 
 MAX_COVER_DOWNLOAD_BYTES = 5 * 1024 * 1024
+SEARCH_PROGRESS_DELAYS_SECONDS = (5, 10, 10, 10, 10, 10)
 WEBP_COVER_RE = re.compile(r"\.webp(?:[?#].*)?$", re.IGNORECASE)
 TOKEN_RE = re.compile(r"[0-9a-zа-яё]+", re.IGNORECASE)
 LATIN_RE = re.compile(r"[a-z]", re.IGNORECASE)
@@ -435,9 +437,11 @@ async def search_more(message: Message, config: Config) -> None:
     )
     status_message = await message.answer(format_message("search_more_processing", language))
     try:
-        products = await asyncio.wait_for(
+        products = await _wait_for_search_with_progress(
             _next_products(session=session, config=config, message=message),
             timeout=config.search_timeout_seconds,
+            message=message,
+            language=language,
         )
     except TimeoutError:
         search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
@@ -528,7 +532,7 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
 
     status_message = await message.answer(format_message("photo_processing", language))
     try:
-        await asyncio.wait_for(
+        await _wait_for_search_with_progress(
             _run_photo_search(
                 message=message,
                 config=config,
@@ -537,6 +541,8 @@ async def search_uzum_by_photo(message: Message, config: Config) -> None:
                 status_message=status_message,
             ),
             timeout=config.search_timeout_seconds,
+            message=message,
+            language=language,
         )
     except TimeoutError:
         search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
@@ -1431,7 +1437,7 @@ async def _run_text_search_with_timeout(
 ) -> None:
     language = language_from_message(message)
     try:
-        await asyncio.wait_for(
+        await _wait_for_search_with_progress(
             _run_text_search(
                 message=message,
                 config=config,
@@ -1443,6 +1449,8 @@ async def _run_text_search_with_timeout(
                 intro_key=intro_key,
             ),
             timeout=config.search_timeout_seconds,
+            message=message,
+            language=language,
         )
     except TimeoutError:
         search_state.clear(chat_id=message.chat.id, user_id=_user_id(message))
@@ -1453,6 +1461,32 @@ async def _run_text_search_with_timeout(
             language=language,
             query=query,
             input_type=input_type,
+        )
+
+
+async def _wait_for_search_with_progress(
+    awaitable,
+    *,
+    timeout: float,
+    message: Message,
+    language: str,
+):
+    task = asyncio.create_task(awaitable)
+    progress_task = asyncio.create_task(_send_search_progress_pings(message, language))
+    try:
+        return await asyncio.wait_for(task, timeout=timeout)
+    finally:
+        progress_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await progress_task
+
+
+async def _send_search_progress_pings(message: Message, language: str) -> None:
+    for delay in SEARCH_PROGRESS_DELAYS_SECONDS:
+        await asyncio.sleep(delay)
+        await message.answer(
+            format_message("search_still_processing", language),
+            disable_web_page_preview=True,
         )
 
 

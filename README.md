@@ -75,6 +75,8 @@ Bot search flow:
 - Photo search adds compact multilingual aliases for packaged goods so Uzbek/Russian/English catalog titles can match without another AI call. If a visible brand is detected, text fallback requires that brand in the candidate card.
 - Bot detects the user's Telegram app language and answers in Uzbek, Russian, or English.
 - Bot sends 10 product cards with cover, price, rating, and link.
+- Long searches time out after at least 60 seconds. While a private-chat search is still
+  running, the bot sends progress pings after 5 seconds and then every 10 seconds.
 - The localized `Yana` / `Еще` / `More` keyboard button sends the next 10 cards for the latest query of that exact chat/user.
 - Any new product text resets that user's search offset, so old searches are not mixed.
 - Bot-side rate limiting is enabled by default. `BOT_RATE_LIMIT_MAX_EVENTS` caps all

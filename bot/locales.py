@@ -96,6 +96,7 @@ LOCALES: dict[str, LocaleCopy] = {
                 "Qidiruv juda uzoq davom etdi. So'rovni soddaroq yozing yoki "
                 "keyinroq urinib ko'ring."
             ),
+            "search_still_processing": "Hali ham qidiryapman...",
             "unknown_command": (
                 "Bunday buyruq yo'q. Mahsulot nomini yozing, foto yoki ovoz yuboring."
             ),
@@ -309,6 +310,7 @@ LOCALES: dict[str, LocaleCopy] = {
                 "Поиск занял слишком много времени. Попробуйте упростить запрос "
                 "или повторить позже."
             ),
+            "search_still_processing": "все еще ищу....",
             "unknown_command": (
                 "Такой команды нет. Напишите название товара, отправьте фото или голос."
             ),
@@ -523,6 +525,7 @@ LOCALES: dict[str, LocaleCopy] = {
             "search_timeout": (
                 "Search took too long. Try a simpler query or repeat it later."
             ),
+            "search_still_processing": "Still searching...",
             "unknown_command": (
                 "Unknown command. Type a product name, send a photo, or send a voice message."
             ),

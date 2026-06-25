@@ -28,6 +28,7 @@ from bot.handlers.common import (
     _run_text_search_with_timeout,
     _search_expansion_allowed,
     _select_photo_for_vision,
+    _send_search_progress_pings,
     _source_product_ids_from_text,
     _strip_bot_username,
     _voice_search_available,
@@ -454,6 +455,29 @@ async def test_replace_status_message_sends_new_message_for_reply_keyboard():
     assert message.deleted is True
     assert message.edited == []
     assert message.answered == [("Найдено 10 товаров.", keyboard, True)]
+
+
+@pytest.mark.asyncio
+async def test_search_progress_pings_use_requested_schedule(monkeypatch):
+    delays: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        delays.append(delay)
+
+    class FakeMessage:
+        def __init__(self) -> None:
+            self.answered: list[tuple[str, bool]] = []
+
+        async def answer(self, text, disable_web_page_preview=True):
+            self.answered.append((text, disable_web_page_preview))
+
+    monkeypatch.setattr(common_handlers.asyncio, "sleep", fake_sleep)
+    message = FakeMessage()
+
+    await _send_search_progress_pings(message, "ru")
+
+    assert delays == [5, 10, 10, 10, 10, 10]
+    assert message.answered == [("все еще ищу....", True)] * 6
 
 
 def test_rate_limit_event_scopes_target_search_and_ai_inputs():
